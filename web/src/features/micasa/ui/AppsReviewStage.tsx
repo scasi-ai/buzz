@@ -1,5 +1,11 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CheckCircle2, House, LoaderCircle, Search, ShieldCheck } from "lucide-react";
+import {
+  CheckCircle2,
+  House,
+  LoaderCircle,
+  Search,
+  ShieldCheck,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -44,7 +50,7 @@ const placementLabels: Record<AppsReviewCard["placement"], string> = {
 
 function Brand() {
   return (
-    <div className="flex items-center gap-3" aria-label="MiCasa">
+    <div className="flex items-center gap-3">
       <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-950 text-white">
         <House aria-hidden="true" className="h-5 w-5" />
       </span>
@@ -148,9 +154,7 @@ function Card({
           onClick={() => setDecision(primary)}
           type="button"
         >
-          {primary === "ACKNOWLEDGED_UNAVAILABLE"
-            ? "Acknowledge"
-            : "Not now"}
+          {primary === "ACKNOWLEDGED_UNAVAILABLE" ? "Acknowledge" : "Not now"}
         </button>
         <button
           className={
@@ -264,10 +268,7 @@ export function AppsReviewStage({ tier }: { tier: AppsTier }) {
     setDecisions((current) => ({
       ...current,
       ...Object.fromEntries(
-        cards.map((card) => [
-          card.serviceId,
-          defaultReviewDecision(card),
-        ]),
+        cards.map((card) => [card.serviceId, defaultReviewDecision(card)]),
       ),
     }));
   }
@@ -275,8 +276,8 @@ export function AppsReviewStage({ tier }: { tier: AppsTier }) {
   return (
     <Shell>
       <p className="text-sm font-semibold uppercase tracking-wider text-slate-500">
-        Household setup · {tier === "HOUSEHOLD" ? "Household" : "My"} Apps
-        &amp; Services
+        Household setup · {tier === "HOUSEHOLD" ? "Household" : "My"} Apps &amp;
+        Services
       </p>
       <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
         Review {tier === "HOUSEHOLD" ? "Household" : "My"} Apps &amp; Services
@@ -311,7 +312,7 @@ export function AppsReviewStage({ tier }: { tier: AppsTier }) {
       <p className="mt-3 text-sm text-slate-600" aria-live="polite">
         {remaining === 0
           ? "Every applicable card has a decision."
-          : remaining + " cards still need a decision."}
+          : `${remaining} cards still need a decision.`}
       </p>
 
       <div className="mt-7 space-y-8">

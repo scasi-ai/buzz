@@ -8,7 +8,7 @@ import {
   parseAppsReviewSnapshot,
 } from "./apps-onboarding.ts";
 
-const csrfToken = "csrf_" + "a".repeat(40);
+const csrfToken = `csrf_${"a".repeat(40)}`;
 function card(overrides = {}) {
   return {
     serviceId: "gmail",
@@ -104,7 +104,7 @@ test("accepts only verified decision readback", () => {
     decisionRevision: 5,
     operation: {
       operationId: "operation:apps",
-      idempotencyKey: "micasa-apps-review:" + "b".repeat(64),
+      idempotencyKey: `micasa-apps-review:${"b".repeat(64)}`,
       state: "VERIFIED",
       retrySafe: true,
       mutationPossible: false,

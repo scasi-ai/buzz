@@ -5,50 +5,23 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from "./routes/root";
+import { Route as onboardingRouteImport } from "./routes/onboarding";
 import { Route as indexRouteImport } from "./routes/index";
 import { Route as inviteDotcodeRouteImport } from "./routes/invite.$code";
-import { Route as onboardingRouteImport } from "./routes/onboarding";
-import { Route as settingsHouseholdAgentRouteImport } from "./routes/settings.household.agent";
-import { Route as settingsHouseholdAppsRouteImport } from "./routes/settings.household.apps";
-import { Route as settingsHouseholdMembersRouteImport } from "./routes/settings.household.members";
-import { Route as settingsUserAgentRouteImport } from "./routes/settings.user.agent";
-import { Route as settingsUserAppsRouteImport } from "./routes/settings.user.apps";
+import { Route as settingsDotuserDotappsRouteImport } from "./routes/settings.user.apps";
+import { Route as settingsDotuserDotagentRouteImport } from "./routes/settings.user.agent";
+import { Route as settingsDothouseholdDotmembersRouteImport } from "./routes/settings.household.members";
+import { Route as settingsDothouseholdDotappsRouteImport } from "./routes/settings.household.apps";
+import { Route as settingsDothouseholdDotagentRouteImport } from "./routes/settings.household.agent";
 
-const indexRoute = indexRouteImport.update({
-  id: "/",
-  path: "/",
-  getParentRoute: () => rootRouteImport,
-} as any);
 const onboardingRoute = onboardingRouteImport.update({
   id: "/onboarding",
   path: "/onboarding",
   getParentRoute: () => rootRouteImport,
 } as any);
-const settingsHouseholdAgentRoute =
-  settingsHouseholdAgentRouteImport.update({
-    id: "/settings/household/agent",
-    path: "/settings/household/agent",
-    getParentRoute: () => rootRouteImport,
-  } as any);
-const settingsHouseholdAppsRoute = settingsHouseholdAppsRouteImport.update({
-  id: "/settings/household/apps",
-  path: "/settings/household/apps",
-  getParentRoute: () => rootRouteImport,
-} as any);
-const settingsHouseholdMembersRoute =
-  settingsHouseholdMembersRouteImport.update({
-    id: "/settings/household/members",
-    path: "/settings/household/members",
-    getParentRoute: () => rootRouteImport,
-  } as any);
-const settingsUserAgentRoute = settingsUserAgentRouteImport.update({
-  id: "/settings/user/agent",
-  path: "/settings/user/agent",
-  getParentRoute: () => rootRouteImport,
-} as any);
-const settingsUserAppsRoute = settingsUserAppsRouteImport.update({
-  id: "/settings/user/apps",
-  path: "/settings/user/apps",
+const indexRoute = indexRouteImport.update({
+  id: "/",
+  path: "/",
   getParentRoute: () => rootRouteImport,
 } as any);
 const inviteDotcodeRoute = inviteDotcodeRouteImport.update({
@@ -56,91 +29,112 @@ const inviteDotcodeRoute = inviteDotcodeRouteImport.update({
   path: "/invite/$code",
   getParentRoute: () => rootRouteImport,
 } as any);
+const settingsDotuserDotappsRoute = settingsDotuserDotappsRouteImport.update({
+  id: "/settings/user/apps",
+  path: "/settings/user/apps",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const settingsDotuserDotagentRoute = settingsDotuserDotagentRouteImport.update({
+  id: "/settings/user/agent",
+  path: "/settings/user/agent",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const settingsDothouseholdDotmembersRoute =
+  settingsDothouseholdDotmembersRouteImport.update({
+    id: "/settings/household/members",
+    path: "/settings/household/members",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const settingsDothouseholdDotappsRoute =
+  settingsDothouseholdDotappsRouteImport.update({
+    id: "/settings/household/apps",
+    path: "/settings/household/apps",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const settingsDothouseholdDotagentRoute =
+  settingsDothouseholdDotagentRouteImport.update({
+    id: "/settings/household/agent",
+    path: "/settings/household/agent",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 
 export interface FileRoutesByFullPath {
   "/": typeof indexRoute;
   "/onboarding": typeof onboardingRoute;
-  "/settings/household/agent": typeof settingsHouseholdAgentRoute;
-  "/settings/household/apps": typeof settingsHouseholdAppsRoute;
-  "/settings/household/members": typeof settingsHouseholdMembersRoute;
-  "/settings/user/agent": typeof settingsUserAgentRoute;
-  "/settings/user/apps": typeof settingsUserAppsRoute;
   "/invite/$code": typeof inviteDotcodeRoute;
+  "/settings/household/agent": typeof settingsDothouseholdDotagentRoute;
+  "/settings/household/apps": typeof settingsDothouseholdDotappsRoute;
+  "/settings/household/members": typeof settingsDothouseholdDotmembersRoute;
+  "/settings/user/agent": typeof settingsDotuserDotagentRoute;
+  "/settings/user/apps": typeof settingsDotuserDotappsRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof indexRoute;
   "/onboarding": typeof onboardingRoute;
-  "/settings/household/agent": typeof settingsHouseholdAgentRoute;
-  "/settings/household/apps": typeof settingsHouseholdAppsRoute;
-  "/settings/household/members": typeof settingsHouseholdMembersRoute;
-  "/settings/user/agent": typeof settingsUserAgentRoute;
-  "/settings/user/apps": typeof settingsUserAppsRoute;
   "/invite/$code": typeof inviteDotcodeRoute;
+  "/settings/household/agent": typeof settingsDothouseholdDotagentRoute;
+  "/settings/household/apps": typeof settingsDothouseholdDotappsRoute;
+  "/settings/household/members": typeof settingsDothouseholdDotmembersRoute;
+  "/settings/user/agent": typeof settingsDotuserDotagentRoute;
+  "/settings/user/apps": typeof settingsDotuserDotappsRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   "/": typeof indexRoute;
   "/onboarding": typeof onboardingRoute;
-  "/settings/household/agent": typeof settingsHouseholdAgentRoute;
-  "/settings/household/apps": typeof settingsHouseholdAppsRoute;
-  "/settings/household/members": typeof settingsHouseholdMembersRoute;
-  "/settings/user/agent": typeof settingsUserAgentRoute;
-  "/settings/user/apps": typeof settingsUserAppsRoute;
   "/invite/$code": typeof inviteDotcodeRoute;
+  "/settings/household/agent": typeof settingsDothouseholdDotagentRoute;
+  "/settings/household/apps": typeof settingsDothouseholdDotappsRoute;
+  "/settings/household/members": typeof settingsDothouseholdDotmembersRoute;
+  "/settings/user/agent": typeof settingsDotuserDotagentRoute;
+  "/settings/user/apps": typeof settingsDotuserDotappsRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
   fullPaths:
     | "/"
     | "/onboarding"
+    | "/invite/$code"
     | "/settings/household/agent"
     | "/settings/household/apps"
     | "/settings/household/members"
     | "/settings/user/agent"
-    | "/settings/user/apps"
-    | "/invite/$code";
+    | "/settings/user/apps";
   fileRoutesByTo: FileRoutesByTo;
   to:
     | "/"
     | "/onboarding"
+    | "/invite/$code"
     | "/settings/household/agent"
     | "/settings/household/apps"
     | "/settings/household/members"
     | "/settings/user/agent"
-    | "/settings/user/apps"
-    | "/invite/$code";
+    | "/settings/user/apps";
   id:
     | "__root__"
     | "/"
     | "/onboarding"
+    | "/invite/$code"
     | "/settings/household/agent"
     | "/settings/household/apps"
     | "/settings/household/members"
     | "/settings/user/agent"
-    | "/settings/user/apps"
-    | "/invite/$code";
+    | "/settings/user/apps";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
   indexRoute: typeof indexRoute;
   onboardingRoute: typeof onboardingRoute;
-  settingsHouseholdAgentRoute: typeof settingsHouseholdAgentRoute;
-  settingsHouseholdAppsRoute: typeof settingsHouseholdAppsRoute;
-  settingsHouseholdMembersRoute: typeof settingsHouseholdMembersRoute;
-  settingsUserAgentRoute: typeof settingsUserAgentRoute;
-  settingsUserAppsRoute: typeof settingsUserAppsRoute;
   inviteDotcodeRoute: typeof inviteDotcodeRoute;
+  settingsDothouseholdDotagentRoute: typeof settingsDothouseholdDotagentRoute;
+  settingsDothouseholdDotappsRoute: typeof settingsDothouseholdDotappsRoute;
+  settingsDothouseholdDotmembersRoute: typeof settingsDothouseholdDotmembersRoute;
+  settingsDotuserDotagentRoute: typeof settingsDotuserDotagentRoute;
+  settingsDotuserDotappsRoute: typeof settingsDotuserDotappsRoute;
 }
 
 declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
-    "/": {
-      id: "/";
-      path: "/";
-      fullPath: "/";
-      preLoaderRoute: typeof indexRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
     "/onboarding": {
       id: "/onboarding";
       path: "/onboarding";
@@ -148,39 +142,11 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof onboardingRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/settings/household/agent": {
-      id: "/settings/household/agent";
-      path: "/settings/household/agent";
-      fullPath: "/settings/household/agent";
-      preLoaderRoute: typeof settingsHouseholdAgentRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/settings/household/apps": {
-      id: "/settings/household/apps";
-      path: "/settings/household/apps";
-      fullPath: "/settings/household/apps";
-      preLoaderRoute: typeof settingsHouseholdAppsRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/settings/household/members": {
-      id: "/settings/household/members";
-      path: "/settings/household/members";
-      fullPath: "/settings/household/members";
-      preLoaderRoute: typeof settingsHouseholdMembersRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/settings/user/agent": {
-      id: "/settings/user/agent";
-      path: "/settings/user/agent";
-      fullPath: "/settings/user/agent";
-      preLoaderRoute: typeof settingsUserAgentRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
-    "/settings/user/apps": {
-      id: "/settings/user/apps";
-      path: "/settings/user/apps";
-      fullPath: "/settings/user/apps";
-      preLoaderRoute: typeof settingsUserAppsRouteImport;
+    "/": {
+      id: "/";
+      path: "/";
+      fullPath: "/";
+      preLoaderRoute: typeof indexRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/invite/$code": {
@@ -190,18 +156,53 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof inviteDotcodeRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/settings/user/apps": {
+      id: "/settings/user/apps";
+      path: "/settings/user/apps";
+      fullPath: "/settings/user/apps";
+      preLoaderRoute: typeof settingsDotuserDotappsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/settings/user/agent": {
+      id: "/settings/user/agent";
+      path: "/settings/user/agent";
+      fullPath: "/settings/user/agent";
+      preLoaderRoute: typeof settingsDotuserDotagentRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/settings/household/members": {
+      id: "/settings/household/members";
+      path: "/settings/household/members";
+      fullPath: "/settings/household/members";
+      preLoaderRoute: typeof settingsDothouseholdDotmembersRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/settings/household/apps": {
+      id: "/settings/household/apps";
+      path: "/settings/household/apps";
+      fullPath: "/settings/household/apps";
+      preLoaderRoute: typeof settingsDothouseholdDotappsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/settings/household/agent": {
+      id: "/settings/household/agent";
+      path: "/settings/household/agent";
+      fullPath: "/settings/household/agent";
+      preLoaderRoute: typeof settingsDothouseholdDotagentRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   indexRoute: indexRoute,
   onboardingRoute: onboardingRoute,
-  settingsHouseholdAgentRoute: settingsHouseholdAgentRoute,
-  settingsHouseholdAppsRoute: settingsHouseholdAppsRoute,
-  settingsHouseholdMembersRoute: settingsHouseholdMembersRoute,
-  settingsUserAgentRoute: settingsUserAgentRoute,
-  settingsUserAppsRoute: settingsUserAppsRoute,
   inviteDotcodeRoute: inviteDotcodeRoute,
+  settingsDothouseholdDotagentRoute: settingsDothouseholdDotagentRoute,
+  settingsDothouseholdDotappsRoute: settingsDothouseholdDotappsRoute,
+  settingsDothouseholdDotmembersRoute: settingsDothouseholdDotmembersRoute,
+  settingsDotuserDotagentRoute: settingsDotuserDotagentRoute,
+  settingsDotuserDotappsRoute: settingsDotuserDotappsRoute,
 };
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

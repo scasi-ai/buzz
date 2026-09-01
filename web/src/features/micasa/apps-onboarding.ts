@@ -1,3 +1,5 @@
+import { isAllowedMiCasaOrigin } from "./origin-policy.ts";
+
 export class AppsOnboardingContractError extends Error {
   constructor(message: string) {
     super(message);
@@ -81,7 +83,7 @@ export type AppsReviewMutation = {
 
 type JsonObject = Record<string, unknown>;
 const API_PREFIX = "/api/micasa/v1";
-const APPS_PATH = API_PREFIX + "/onboarding/apps";
+const APPS_PATH = `${API_PREFIX}/onboarding/apps`;
 const REQUEST_TIMEOUT_MS = 15_000;
 const REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 const SERVICE_ID = /^[a-z0-9][a-z0-9-]{0,95}$/;
@@ -132,7 +134,7 @@ const NOT_NOW_ALLOWED = new Set<AppsCatalogStatus>([
 
 function object(value: unknown, label: string): JsonObject {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new AppsOnboardingContractError(label + " must be an object.");
+    throw new AppsOnboardingContractError(`${label} must be an object.`);
   }
   return value as JsonObject;
 }
@@ -143,9 +145,7 @@ function exact(record: JsonObject, fields: readonly string[], label: string) {
     actual.length !== expected.length ||
     actual.some((field, index) => field !== expected[index])
   ) {
-    throw new AppsOnboardingContractError(
-      label + " has an unsupported field.",
-    );
+    throw new AppsOnboardingContractError(`${label} has an unsupported field.`);
   }
 }
 function text(
@@ -160,9 +160,7 @@ function text(
     value.trim().length === 0 ||
     value.length > maximum
   ) {
-    throw new AppsOnboardingContractError(
-      label + "." + key + " must be text.",
-    );
+    throw new AppsOnboardingContractError(`${label}.${key} must be text.`);
   }
   return value;
 }
@@ -170,7 +168,7 @@ function positiveInteger(record: JsonObject, key: string, label: string) {
   const value = record[key];
   if (!Number.isSafeInteger(value) || (value as number) < 1) {
     throw new AppsOnboardingContractError(
-      label + "." + key + " must be a positive integer.",
+      `${label}.${key} must be a positive integer.`,
     );
   }
   return value as number;
@@ -181,7 +179,7 @@ function choice<T extends string>(
   label: string,
 ): T {
   if (typeof value !== "string" || !choices.includes(value as T)) {
-    throw new AppsOnboardingContractError(label + " is unsupported.");
+    throw new AppsOnboardingContractError(`${label} is unsupported.`);
   }
   return value as T;
 }
@@ -196,7 +194,7 @@ function parseCard(
   tier: AppsTier,
   index: number,
 ): AppsReviewCard {
-  const label = "apps.cards[" + index + "]";
+  const label = `apps.cards[${index}]`;
   const record = object(value, label);
   exact(
     record,
@@ -214,40 +212,36 @@ function parseCard(
   );
   const serviceId = text(record, "serviceId", label, 96);
   if (!SERVICE_ID.test(serviceId)) {
-    throw new AppsOnboardingContractError(label + ".serviceId is invalid.");
+    throw new AppsOnboardingContractError(`${label}.serviceId is invalid.`);
   }
   const placement = choice(
     record.placement,
     tier === "HOUSEHOLD"
-      ? ([
-          "HOUSEHOLD",
-          "DEDICATED_OR_SHARED",
-          "PRIVATE_SHARE_ONLY",
-        ] as const)
+      ? (["HOUSEHOLD", "DEDICATED_OR_SHARED", "PRIVATE_SHARE_ONLY"] as const)
       : (["PRIVATE"] as const),
-    label + ".placement",
+    `${label}.placement`,
   );
   const catalogStatus = choice(
     record.catalogStatus,
     STATUSES,
-    label + ".catalogStatus",
+    `${label}.catalogStatus`,
   );
   if (
     typeof record.connectEnabled !== "boolean" ||
     record.connectEnabled !== (catalogStatus === "AVAILABLE")
   ) {
     throw new AppsOnboardingContractError(
-      label + ".connectEnabled claims false readiness.",
+      `${label}.connectEnabled claims false readiness.`,
     );
   }
   return {
     serviceId,
     displayName: text(record, "displayName", label, 120),
-    category: choice(record.category, CATEGORIES, label + ".category"),
+    category: choice(record.category, CATEGORIES, `${label}.category`),
     placement,
     catalogStatus,
     connectEnabled: record.connectEnabled,
-    decision: parseDecision(record.decision, label + ".decision"),
+    decision: parseDecision(record.decision, `${label}.decision`),
     details: text(record, "details", label, 1_200),
   };
 }
@@ -278,18 +272,12 @@ export function parseAppsReviewSnapshot(value: unknown): AppsReviewSnapshot {
   const digest = text(record, "catalogDigest", "apps", 64);
   const csrfToken = text(record, "csrfToken", "apps");
   if (!DIGEST.test(digest) || !CSRF.test(csrfToken)) {
-    throw new AppsOnboardingContractError(
-      "The catalog authority is invalid.",
-    );
+    throw new AppsOnboardingContractError("The catalog authority is invalid.");
   }
   if (record.catalogTotalCards !== 83 || !Array.isArray(record.cards)) {
-    throw new AppsOnboardingContractError(
-      "The locked catalog is incomplete.",
-    );
+    throw new AppsOnboardingContractError("The locked catalog is incomplete.");
   }
-  const cards = record.cards.map((card, index) =>
-    parseCard(card, tier, index),
-  );
+  const cards = record.cards.map((card, index) => parseCard(card, tier, index));
   const applicableCardCount = positiveInteger(
     record,
     "applicableCardCount",
@@ -304,15 +292,12 @@ export function parseAppsReviewSnapshot(value: unknown): AppsReviewSnapshot {
       "The applicable catalog is incomplete or duplicated.",
     );
   }
-  const hasUnreviewed = cards.some(
-    (card) => card.decision === "UNREVIEWED",
-  );
+  const hasUnreviewed = cards.some((card) => card.decision === "UNREVIEWED");
   if (
     (state === "REVIEW_REQUIRED") !== hasUnreviewed ||
     cards.some(
       (card) =>
-        card.decision !== "UNREVIEWED" &&
-        !decisionAllowed(card, card.decision),
+        card.decision !== "UNREVIEWED" && !decisionAllowed(card, card.decision),
     )
   ) {
     throw new AppsOnboardingContractError(
@@ -371,7 +356,7 @@ export function buildAppsDecisionPayload(
         !decisionAllowed(card, decision)
       ) {
         throw new AppsOnboardingContractError(
-          card.displayName + " still needs a valid decision.",
+          `${card.displayName} still needs a valid decision.`,
         );
       }
       return { serviceId: card.serviceId, decision };
@@ -380,22 +365,20 @@ export function buildAppsDecisionPayload(
 }
 
 function parseMutationDecision(value: unknown, index: number) {
-  const label = "appsMutation.decisions[" + index + "]";
+  const label = `appsMutation.decisions[${index}]`;
   const record = object(value, label);
   exact(record, ["serviceId", "decision"], label);
   const serviceId = text(record, "serviceId", label, 96);
-  const decision = parseDecision(record.decision, label + ".decision");
+  const decision = parseDecision(record.decision, `${label}.decision`);
   if (!SERVICE_ID.test(serviceId) || decision === "UNREVIEWED") {
-    throw new AppsOnboardingContractError(label + " is invalid.");
+    throw new AppsOnboardingContractError(`${label} is invalid.`);
   }
   return {
     serviceId,
     decision: decision as Exclude<AppsDecision, "UNREVIEWED">,
   };
 }
-export function parseAppsReviewMutation(
-  value: unknown,
-): AppsReviewMutation {
+export function parseAppsReviewMutation(value: unknown): AppsReviewMutation {
   const record = object(value, "appsMutation");
   exact(
     record,
@@ -422,11 +405,7 @@ export function parseAppsReviewMutation(
     ],
     "appsMutation.operation",
   );
-  const operationId = text(
-    operation,
-    "operationId",
-    "appsMutation.operation",
-  );
+  const operationId = text(operation, "operationId", "appsMutation.operation");
   const idempotencyKey = text(
     operation,
     "idempotencyKey",
@@ -481,7 +460,7 @@ export function parseAppsReviewMutation(
 function apiBase(): URL {
   const configured = import.meta.env.VITE_PA_BFF_ORIGIN?.trim();
   const base = new URL(configured || window.location.origin);
-  if (import.meta.env.PROD && base.protocol !== "https:") {
+  if (!isAllowedMiCasaOrigin(base, import.meta.env.PROD)) {
     throw new AppsOnboardingContractError(
       "The production Personal-Agent BFF origin must use HTTPS.",
     );
@@ -517,9 +496,7 @@ async function requestJson<T>(
   }
   return parse(body);
 }
-export function loadAppsReview(
-  tier: AppsTier,
-): Promise<AppsReviewSnapshot> {
+export function loadAppsReview(tier: AppsTier): Promise<AppsReviewSnapshot> {
   return requestJson(tier, parseAppsReviewSnapshot);
 }
 export function saveAppsReview(

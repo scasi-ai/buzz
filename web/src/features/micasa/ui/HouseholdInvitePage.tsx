@@ -61,7 +61,10 @@ export function HouseholdInvitePage({ code }: { code: string }) {
     return (
       <main className="flex min-h-dvh items-center justify-center bg-slate-50 p-6">
         <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-8 text-center">
-          <House aria-hidden="true" className="mx-auto h-9 w-9 text-slate-800" />
+          <House
+            aria-hidden="true"
+            className="mx-auto h-9 w-9 text-slate-800"
+          />
           <h1 className="mt-5 text-2xl font-semibold text-slate-950">
             This invitation cannot be verified
           </h1>

@@ -7,7 +7,7 @@ import {
   validateFounderProfileSelection,
 } from "./founder-onboarding.ts";
 
-const csrfToken = "csrf_" + "a".repeat(40);
+const csrfToken = `csrf_${"a".repeat(40)}`;
 function profileSnapshot() {
   return {
     state: "PROFILE_REQUIRED",
@@ -108,7 +108,7 @@ test("accepts only a verified mutation readback", () => {
     profileRevision: 8,
     operation: {
       operationId: "operation:founder-profiles",
-      idempotencyKey: "micasa-founder-profiles:" + "a".repeat(64),
+      idempotencyKey: `micasa-founder-profiles:${"a".repeat(64)}`,
       state: "VERIFIED",
       retrySafe: true,
       mutationPossible: false,

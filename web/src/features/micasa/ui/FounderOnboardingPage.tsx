@@ -21,7 +21,7 @@ import { Button } from "@/shared/ui/button";
 
 function Brand() {
   return (
-    <div className="flex items-center gap-3" aria-label="MiCasa">
+    <div className="flex items-center gap-3">
       <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-950 text-white">
         <House aria-hidden="true" className="h-5 w-5" />
       </span>
@@ -61,13 +61,7 @@ function Loading() {
     </Frame>
   );
 }
-function Failure({
-  retry,
-  pending,
-}: {
-  retry: () => void;
-  pending: boolean;
-}) {
+function Failure({ retry, pending }: { retry: () => void; pending: boolean }) {
   return (
     <Frame>
       <div className="mx-auto max-w-xl py-8 text-center">
@@ -149,7 +143,7 @@ function Provisioning({ readbackName }: { readbackName?: string }) {
         </h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
           Personal-Agent verified your profile choices
-          {readbackName ? " for " + readbackName : ""}. It is now creating the
+          {readbackName ? ` for ${readbackName}` : ""}. It is now creating the
           Household, agent identities, rooms, realtime authorization, and ACP
           workloads. Refreshing resumes this operation rather than starting it
           again.

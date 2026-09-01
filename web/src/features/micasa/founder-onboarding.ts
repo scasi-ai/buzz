@@ -1,3 +1,5 @@
+import { isAllowedMiCasaOrigin } from "./origin-policy.ts";
+
 export class FounderOnboardingContractError extends Error {
   constructor(message: string) {
     super(message);
@@ -82,7 +84,7 @@ export type FounderProfileMutation = {
 
 type JsonObject = Record<string, unknown>;
 const API_PREFIX = "/api/micasa/v1";
-const ONBOARDING_PATH = API_PREFIX + "/onboarding";
+const ONBOARDING_PATH = `${API_PREFIX}/onboarding`;
 const REQUEST_TIMEOUT_MS = 15_000;
 const PUBLIC_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 const CSRF = /^[A-Za-z0-9_-]{32,256}$/;
@@ -97,7 +99,7 @@ const STEPS = [
 
 function object(value: unknown, label: string): JsonObject {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new FounderOnboardingContractError(label + " must be an object.");
+    throw new FounderOnboardingContractError(`${label} must be an object.`);
   }
   return value as JsonObject;
 }
@@ -109,7 +111,7 @@ function exact(record: JsonObject, keys: readonly string[], label: string) {
     actual.some((key, index) => key !== expected[index])
   ) {
     throw new FounderOnboardingContractError(
-      label + " has an unsupported field.",
+      `${label} has an unsupported field.`,
     );
   }
 }
@@ -125,9 +127,7 @@ function text(
     value.trim().length === 0 ||
     value.length > maximum
   ) {
-    throw new FounderOnboardingContractError(
-      label + "." + key + " must be text.",
-    );
+    throw new FounderOnboardingContractError(`${label}.${key} must be text.`);
   }
   return value;
 }
@@ -135,7 +135,7 @@ function ref(record: JsonObject, key: string, label: string): string {
   const value = text(record, key, label);
   if (!PUBLIC_REF.test(value)) {
     throw new FounderOnboardingContractError(
-      label + "." + key + " must be an opaque reference.",
+      `${label}.${key} must be an opaque reference.`,
     );
   }
   return value;
@@ -148,16 +148,20 @@ function positiveInteger(
   const value = record[key];
   if (!Number.isSafeInteger(value) || (value as number) < 1) {
     throw new FounderOnboardingContractError(
-      label + "." + key + " must be a positive integer.",
+      `${label}.${key} must be a positive integer.`,
     );
   }
   return value as number;
 }
 function safePath(record: JsonObject, key: string, label: string): string {
   const value = text(record, key, label);
-  if (!value.startsWith("/") || value.startsWith("//") || value.includes("\\")) {
+  if (
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    value.includes("\\")
+  ) {
     throw new FounderOnboardingContractError(
-      label + "." + key + " must be a safe path.",
+      `${label}.${key} must be a safe path.`,
     );
   }
   return value;
@@ -193,7 +197,7 @@ function parseSteps(value: unknown): FounderOnboardingStep[] {
       !STEPS.includes(step as FounderOnboardingStep)
     ) {
       throw new FounderOnboardingContractError(
-        "onboarding.completedSteps[" + index + "] is invalid.",
+        `onboarding.completedSteps[${index}] is invalid.`,
       );
     }
     return step as FounderOnboardingStep;
@@ -205,7 +209,7 @@ function parseAvatar(value: unknown, label: string): GeneratedAvatar {
   const mediaType = text(record, "mediaType", label);
   if (!["image/jpeg", "image/png", "image/webp"].includes(mediaType)) {
     throw new FounderOnboardingContractError(
-      label + ".mediaType is unsupported.",
+      `${label}.mediaType is unsupported.`,
     );
   }
   return {
@@ -374,12 +378,7 @@ export function parseFounderProfileMutation(
   const readback = object(record.readback, "founderProfileMutation.readback");
   exact(
     readback,
-    [
-      "householdName",
-      "humanDisplayName",
-      "householdAgent",
-      "personalAgent",
-    ],
+    ["householdName", "humanDisplayName", "householdAgent", "personalAgent"],
     "founderProfileMutation.readback",
   );
   return {
@@ -440,18 +439,26 @@ export function parseFounderProfileMutation(
   };
 }
 
+function hasControlCharacter(value: string): boolean {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    if (codePoint <= 31 || codePoint === 127) return true;
+  }
+  return false;
+}
+
 function normalizedName(value: string, label: string): string {
   const normalized = value.normalize("NFC").trim();
   if (
     normalized.length < 1 ||
     normalized.length > 80 ||
-    /[\u0000-\u001f\u007f]/u.test(normalized) ||
+    hasControlCharacter(normalized) ||
     normalized.includes("://")
   ) {
-    throw new FounderOnboardingContractError(label + " is invalid.");
+    throw new FounderOnboardingContractError(`${label} is invalid.`);
   }
   if (RESERVED_NAMES.has(normalized.toLocaleLowerCase())) {
-    throw new FounderOnboardingContractError(label + " is reserved.");
+    throw new FounderOnboardingContractError(`${label} is reserved.`);
   }
   return normalized;
 }
@@ -532,7 +539,7 @@ export function validateFounderProfileSelection(
 function apiBase(): URL {
   const configured = import.meta.env.VITE_PA_BFF_ORIGIN?.trim();
   const base = new URL(configured || window.location.origin);
-  if (import.meta.env.PROD && base.protocol !== "https:") {
+  if (!isAllowedMiCasaOrigin(base, import.meta.env.PROD)) {
     throw new FounderOnboardingContractError(
       "The production Personal-Agent BFF origin must use HTTPS.",
     );
@@ -540,10 +547,8 @@ function apiBase(): URL {
   return base;
 }
 function endpoint(path: string): URL {
-  if (!path.startsWith(API_PREFIX + "/")) {
-    throw new FounderOnboardingContractError(
-      "Refusing a non-MiCasa API path.",
-    );
+  if (!path.startsWith(`${API_PREFIX}/`)) {
+    throw new FounderOnboardingContractError("Refusing a non-MiCasa API path.");
   }
   return new URL(path, apiBase());
 }
@@ -580,7 +585,7 @@ export function saveFounderProfiles(
 ): Promise<FounderProfileMutation> {
   const body = validateFounderProfileSelection(selection, snapshot);
   return requestJson(
-    ONBOARDING_PATH + "/profiles",
+    `${ONBOARDING_PATH}/profiles`,
     parseFounderProfileMutation,
     {
       method: "PUT",

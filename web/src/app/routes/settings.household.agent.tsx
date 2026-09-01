@@ -2,9 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AgentProfileSettingsPage } from "@/features/micasa/ui/AgentProfileSettingsPage";
 
 export const Route = createFileRoute("/settings/household/agent")({
-	component: HouseholdAgentSettingsRoute,
+  component: HouseholdAgentSettingsRoute,
 });
 
 function HouseholdAgentSettingsRoute() {
-	return <AgentProfileSettingsPage scope="HOUSEHOLD" />;
+  return <AgentProfileSettingsPage scope="HOUSEHOLD" />;
 }
