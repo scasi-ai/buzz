@@ -6,6 +6,7 @@ import {
   parseGroupHouseholdAgentMutation,
   parseGroupHouseholdAgentSettings,
   parseMiCasaBootstrap,
+  parseMiCasaLogout,
 } from "./contracts.ts";
 
 const viewerId = `tenant-member:${"1".repeat(64)}`;
@@ -92,6 +93,7 @@ function ready() {
   return {
     state: "READY",
     viewer: { id: viewerId, displayName: "Alex" },
+    csrfToken: `csrf_${"a".repeat(48)}`,
     households: [household],
     activeHousehold: {
       ...household,
@@ -151,6 +153,73 @@ test("parses tenant-chosen human, personal-agent, and household-agent profiles",
     ],
   );
   assert.equal(room.participants[0].avatarPath, "/api/micasa/v1/media/alex");
+  assert.equal(parsed.csrfToken, `csrf_${"a".repeat(48)}`);
+});
+
+test("READY bootstrap requires a shaped sign-out CSRF token", () => {
+  for (const csrfToken of [undefined, "short", "csrf contains spaces"]) {
+    const value = ready();
+    value.csrfToken = csrfToken;
+    assert.throws(() => parseMiCasaBootstrap(value), MiCasaContractError);
+  }
+});
+
+test("parses exact, reconciled logout readbacks", () => {
+  assert.deepEqual(
+    parseMiCasaLogout({
+      state: "SIGNED_OUT",
+      serverSessionState: "ABSENT",
+      operationId: null,
+      destinationPath: "/",
+    }),
+    {
+      state: "SIGNED_OUT",
+      serverSessionState: "ABSENT",
+      operationId: null,
+      destinationPath: "/",
+    },
+  );
+  assert.equal(
+    parseMiCasaLogout({
+      state: "SIGNED_OUT",
+      serverSessionState: "REVOKED",
+      operationId: "session-logout-operation",
+      destinationPath: "/",
+    }).operationId,
+    "session-logout-operation",
+  );
+});
+
+test("refuses contradictory, unsafe, or over-broad logout readbacks", () => {
+  for (const value of [
+    {
+      state: "SIGNED_OUT",
+      serverSessionState: "ABSENT",
+      operationId: "unexpected-operation",
+      destinationPath: "/",
+    },
+    {
+      state: "SIGNED_OUT",
+      serverSessionState: "REVOKED",
+      operationId: null,
+      destinationPath: "/",
+    },
+    {
+      state: "SIGNED_OUT",
+      serverSessionState: "ABSENT",
+      operationId: null,
+      destinationPath: "https://attacker.example/",
+    },
+    {
+      state: "SIGNED_OUT",
+      serverSessionState: "ABSENT",
+      operationId: null,
+      destinationPath: "/",
+      sessionSecret: "must-never-cross-the-boundary",
+    },
+  ]) {
+    assert.throws(() => parseMiCasaLogout(value), MiCasaContractError);
+  }
 });
 
 test("groups require at least three humans and one Personal Agent per human", () => {

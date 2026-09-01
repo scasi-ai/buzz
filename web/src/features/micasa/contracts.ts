@@ -68,9 +68,17 @@ export type MiCasaBootstrap =
   | {
       state: "READY";
       viewer: Viewer;
+      csrfToken: string;
       households: HouseholdSummary[];
       activeHousehold: ActiveHousehold;
     };
+
+export type MiCasaLogout = {
+  state: "SIGNED_OUT";
+  serverSessionState: "ABSENT" | "REVOKED" | "REPLAYED";
+  operationId: string | null;
+  destinationPath: string;
+};
 
 export type HouseholdInvitationState =
   | "UNAUTHENTICATED"
@@ -510,6 +518,10 @@ export function parseMiCasaBootstrap(value: unknown): MiCasaBootstrap {
   }
 
   const viewer = parseViewer(record.viewer);
+  const csrfToken = text(record, "csrfToken", "bootstrap");
+  if (!CSRF_TOKEN.test(csrfToken)) {
+    throw new MiCasaContractError("bootstrap.csrfToken is invalid.");
+  }
   const households = array(record.households, "bootstrap.households").map(
     (household, index) =>
       parseHousehold(household, `bootstrap.households[${index}]`),
@@ -526,8 +538,49 @@ export function parseMiCasaBootstrap(value: unknown): MiCasaBootstrap {
   return {
     state,
     viewer,
+    csrfToken,
     households,
     activeHousehold,
+  };
+}
+
+export function parseMiCasaLogout(value: unknown): MiCasaLogout {
+  const record = object(value, "logout");
+  const expected = [
+    "destinationPath",
+    "operationId",
+    "serverSessionState",
+    "state",
+  ];
+  const actual = Object.keys(record).sort();
+  if (
+    actual.length !== expected.length ||
+    actual.some((field, index) => field !== expected[index])
+  ) {
+    throw new MiCasaContractError("logout has an unsupported field.");
+  }
+  if (record.state !== "SIGNED_OUT") {
+    throw new MiCasaContractError("logout.state must be SIGNED_OUT.");
+  }
+  const serverSessionState = choice(
+    record.serverSessionState,
+    ["ABSENT", "REVOKED", "REPLAYED"] as const,
+    "logout.serverSessionState",
+  );
+  const operationId = nullablePublicReference(record, "operationId", "logout");
+  if (
+    (serverSessionState === "ABSENT" && operationId !== null) ||
+    (serverSessionState !== "ABSENT" && operationId === null)
+  ) {
+    throw new MiCasaContractError(
+      "logout operation readback contradicts the session state.",
+    );
+  }
+  return {
+    state: "SIGNED_OUT",
+    serverSessionState,
+    operationId,
+    destinationPath: path(record, "destinationPath", "logout"),
   };
 }
 

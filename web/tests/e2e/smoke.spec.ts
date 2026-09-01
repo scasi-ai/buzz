@@ -27,6 +27,7 @@ const hearthParticipant = {
 
 const readyBootstrap = {
   state: "READY",
+  csrfToken: `csrf_${"r".repeat(48)}`,
   viewer: {
     id: "member-1",
     displayName: "Alex",
@@ -143,6 +144,60 @@ test("ready Household renders only PA-authorized rooms and agents", async ({
   await expect(page.locator('a[href^="ws://"], a[href^="wss://"]')).toHaveCount(
     0,
   );
+});
+
+test("sign out revokes the PA session with CSRF and one stable operation", async ({
+  page,
+}) => {
+  const logoutRequests: Array<{ csrf: string | undefined; body: unknown }> = [];
+  await page.route("**/api/micasa/v1/bootstrap**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(readyBootstrap),
+    });
+  });
+  await page.route("**/api/micasa/v1/auth/logout", async (route) => {
+    logoutRequests.push({
+      csrf: route.request().headers()["x-csrf-token"],
+      body: route.request().postDataJSON(),
+    });
+    if (logoutRequests.length === 1) {
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ request_id: "logout-uncertain" }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        state: "SIGNED_OUT",
+        serverSessionState: "REVOKED",
+        operationId: "session-logout-operation",
+        destinationPath: "/",
+      }),
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Sign out of MiCasa" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Try again to reconcile the same request",
+  );
+  await page.getByRole("button", { name: "Sign out of MiCasa" }).click();
+
+  await expect.poll(() => logoutRequests).toHaveLength(2);
+  expect(logoutRequests[0]?.csrf).toBe(readyBootstrap.csrfToken);
+  expect(logoutRequests[1]?.csrf).toBe(readyBootstrap.csrfToken);
+  expect(logoutRequests[0]?.body).toEqual({
+    idempotencyKey: expect.stringMatching(
+      /^logout:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    ),
+  });
+  expect(logoutRequests[1]?.body).toEqual(logoutRequests[0]?.body);
 });
 
 test("Personal-Agent readiness failure never falls back to demo data", async ({

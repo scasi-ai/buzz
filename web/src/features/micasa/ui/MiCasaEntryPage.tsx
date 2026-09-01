@@ -1,16 +1,22 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useRef } from "react";
 import {
   Bot,
   ChevronRight,
   House,
   LoaderCircle,
   LogIn,
+  LogOut,
   MessageCircle,
   RefreshCw,
   UserRound,
   Users,
 } from "lucide-react";
-import { loadMiCasaBootstrap } from "@/features/micasa/api";
+import {
+  createMiCasaLogoutIdempotencyKey,
+  loadMiCasaBootstrap,
+  logoutMiCasa,
+} from "@/features/micasa/api";
 import type {
   AgentReadiness,
   AgentSummary,
@@ -96,6 +102,14 @@ function ReadyHousehold({
   bootstrap: Extract<MiCasaBootstrap, { state: "READY" }>;
 }) {
   const { activeHousehold } = bootstrap;
+  const logoutKey = useRef<string | null>(null);
+  const logout = useMutation({
+    mutationFn: () => {
+      logoutKey.current ??= createMiCasaLogoutIdempotencyKey();
+      return logoutMiCasa(bootstrap, logoutKey.current);
+    },
+    onSuccess: (result) => window.location.assign(result.destinationPath),
+  });
   const activeRoom = activeHousehold.rooms.find(
     (room) => room.id === activeHousehold.activeRoomId,
   );
@@ -131,8 +145,34 @@ function ReadyHousehold({
                 User Settings
               </p>
             </a>
+            <Button
+              aria-label="Sign out of MiCasa"
+              className="gap-2 border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+              disabled={logout.isPending}
+              onClick={() => logout.mutate()}
+              type="button"
+            >
+              {logout.isPending ? (
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="h-4 w-4 animate-spin"
+                />
+              ) : (
+                <LogOut aria-hidden="true" className="h-4 w-4" />
+              )}
+              Sign out
+            </Button>
           </div>
         </div>
+        {logout.isError && (
+          <p
+            className="mx-auto mt-3 max-w-7xl text-right text-sm text-red-700"
+            role="alert"
+          >
+            Sign out could not be confirmed. Try again to reconcile the same
+            request.
+          </p>
+        )}
       </header>
 
       <div className="mx-auto grid max-w-7xl gap-0 lg:grid-cols-[18rem_1fr]">

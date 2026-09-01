@@ -28,6 +28,7 @@ const householdAgentParticipant = {
 
 const readyBootstrap = {
   state: "READY",
+  csrfToken: `csrf_${"r".repeat(48)}`,
   viewer: {
     id: "member-1",
     displayName: "Alex",

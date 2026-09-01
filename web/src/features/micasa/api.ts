@@ -4,11 +4,13 @@ import {
   type GroupHouseholdAgentSettings,
   type HouseholdInvitation,
   type MiCasaBootstrap,
+  type MiCasaLogout,
   parseGroupHouseholdAgentMutation,
   parseGroupHouseholdAgentSettings,
   parseHouseholdInvitation,
   parseInvitationAcceptance,
   parseMiCasaBootstrap,
+  parseMiCasaLogout,
 } from "@/features/micasa/contracts";
 import {
   buildGroupHouseholdAgentMutationRequest,
@@ -99,6 +101,36 @@ export function loadMiCasaBootstrap(): Promise<MiCasaBootstrap> {
   if (householdId) url.searchParams.set("household", householdId);
   if (roomId) url.searchParams.set("room", roomId);
   return requestJson(url, parseMiCasaBootstrap);
+}
+
+export function createMiCasaLogoutIdempotencyKey(): string {
+  if (typeof crypto.randomUUID !== "function") {
+    throw new MiCasaContractError(
+      "This browser cannot create a secure sign-out identifier.",
+    );
+  }
+  return `logout:${crypto.randomUUID()}`;
+}
+
+export function logoutMiCasa(
+  bootstrap: Extract<MiCasaBootstrap, { state: "READY" }>,
+  idempotencyKey: string,
+): Promise<MiCasaLogout> {
+  if (
+    !/^logout:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+      idempotencyKey,
+    )
+  ) {
+    throw new MiCasaContractError("The sign-out identifier is invalid.");
+  }
+  return requestJson(endpoint(`${API_PREFIX}/auth/logout`), parseMiCasaLogout, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": bootstrap.csrfToken,
+    },
+    body: JSON.stringify({ idempotencyKey }),
+  });
 }
 
 export function loadHouseholdInvitation(
