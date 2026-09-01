@@ -36,6 +36,22 @@ test("parses the exact founder profile authority", () => {
     "avatar:household-generated",
   );
 });
+test("accepts the resumable final-readback phase without a destination", () => {
+  const parsed = parseFounderOnboarding({
+    state: "FINALIZING",
+    profileRevision: 8,
+    completedSteps: [
+      "PROFILES",
+      "PROVISIONING",
+      "HOUSEHOLD_APPS",
+      "PRIVATE_APPS",
+    ],
+    csrfToken,
+    generatedAvatars: null,
+  });
+  assert.equal(parsed.state, "FINALIZING");
+  assert.equal(parsed.destinationPath, undefined);
+});
 test("refuses transport fields in the browser projection", () => {
   assert.throws(
     () =>

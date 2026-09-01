@@ -12,6 +12,7 @@ export type FounderOnboardingState =
   | "PROVISIONING"
   | "HOUSEHOLD_APPS_REQUIRED"
   | "PRIVATE_APPS_REQUIRED"
+  | "FINALIZING"
   | "READY"
   | "BLOCKED";
 export type FounderOnboardingStep =
@@ -172,6 +173,7 @@ function parseState(value: unknown): FounderOnboardingState {
     "PROVISIONING",
     "HOUSEHOLD_APPS_REQUIRED",
     "PRIVATE_APPS_REQUIRED",
+    "FINALIZING",
     "READY",
     "BLOCKED",
   ];
@@ -229,6 +231,7 @@ function expectedPrefix(
   if (state === "PRIVATE_APPS_REQUIRED") {
     return ["PROFILES", "PROVISIONING", "HOUSEHOLD_APPS"];
   }
+  if (state === "FINALIZING") return [...STEPS];
   if (state === "READY") return [...STEPS];
   return null;
 }

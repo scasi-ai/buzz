@@ -130,7 +130,13 @@ function AvatarChoice({
     </section>
   );
 }
-function Provisioning({ readbackName }: { readbackName?: string }) {
+function Provisioning({
+  readbackName,
+  finalizing = false,
+}: {
+  readbackName?: string;
+  finalizing?: boolean;
+}) {
   return (
     <Frame>
       <div className="mx-auto max-w-2xl py-8 text-center">
@@ -139,14 +145,24 @@ function Provisioning({ readbackName }: { readbackName?: string }) {
           className="mx-auto h-8 w-8 animate-spin text-slate-700"
         />
         <h1 className="mt-5 text-3xl font-semibold text-slate-950">
-          Creating your Household
+          {finalizing ? "Verifying your Household" : "Creating your Household"}
         </h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
-          Personal-Agent verified your profile choices
-          {readbackName ? ` for ${readbackName}` : ""}. It is now creating the
-          Household, agent identities, rooms, realtime authorization, and ACP
-          workloads. Refreshing resumes this operation rather than starting it
-          again.
+          {finalizing ? (
+            <>
+              Your app reviews are saved. Personal-Agent is checking the final
+              membership, room, connector, Nostr, relay, and agent-workload
+              readbacks before opening the Household.
+            </>
+          ) : (
+            <>
+              Personal-Agent verified your profile choices
+              {readbackName ? ` for ${readbackName}` : ""}. It is now creating
+              the Household, agent identities, rooms, realtime authorization,
+              and ACP workloads.
+            </>
+          )}{" "}
+          Refreshing resumes this operation rather than starting it again.
         </p>
         <Button
           className="mt-6 gap-2 bg-slate-950 text-white hover:bg-slate-800"
@@ -365,6 +381,9 @@ export function FounderOnboardingPage() {
   }
   if (snapshot.state === "PRIVATE_APPS_REQUIRED") {
     return <AppsReviewStage tier="PRIVATE" />;
+  }
+  if (snapshot.state === "FINALIZING") {
+    return <Provisioning finalizing />;
   }
   if (snapshot.state === "READY") {
     return (
