@@ -16,6 +16,7 @@ import {
   loadFounderOnboarding,
   saveFounderProfiles,
 } from "@/features/micasa/founder-onboarding";
+import { AppsReviewStage } from "@/features/micasa/ui/AppsReviewStage";
 import { Button } from "@/shared/ui/button";
 
 function Brand() {
@@ -345,33 +346,6 @@ function FounderProfiles({
     </Frame>
   );
 }
-function ReviewStage({ privateApps }: { privateApps: boolean }) {
-  return (
-    <Frame>
-      <div className="mx-auto max-w-2xl py-8 text-center">
-        <CheckCircle2
-          aria-hidden="true"
-          className="mx-auto h-9 w-9 text-emerald-600"
-        />
-        <h1 className="mt-5 text-3xl font-semibold text-slate-950">
-          Review {privateApps ? "My" : "Household"} Apps &amp; Services
-        </h1>
-        <p className="mt-3 text-sm leading-6 text-slate-600">
-          Profile and provisioning readbacks passed. The complete
-          Personal-Agent consumer catalog must be reviewed here before setup can
-          finish; optional providers do not have to be connected.
-        </p>
-        <Button
-          className="mt-6 gap-2 bg-slate-950 text-white hover:bg-slate-800"
-          onClick={() => window.location.reload()}
-        >
-          <RefreshCw aria-hidden="true" className="h-4 w-4" />
-          Load Apps &amp; Services
-        </Button>
-      </div>
-    </Frame>
-  );
-}
 export function FounderOnboardingPage() {
   const onboarding = useQuery({
     queryKey: ["micasa", "founder-onboarding"],
@@ -393,10 +367,10 @@ export function FounderOnboardingPage() {
   }
   if (snapshot.state === "PROVISIONING") return <Provisioning />;
   if (snapshot.state === "HOUSEHOLD_APPS_REQUIRED") {
-    return <ReviewStage privateApps={false} />;
+    return <AppsReviewStage tier="HOUSEHOLD" />;
   }
   if (snapshot.state === "PRIVATE_APPS_REQUIRED") {
-    return <ReviewStage privateApps />;
+    return <AppsReviewStage tier="PRIVATE" />;
   }
   if (snapshot.state === "READY") {
     return (

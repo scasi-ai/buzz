@@ -325,6 +325,134 @@ test("founder onboarding captures named agents without a Buzz community step", a
   );
 });
 
+
+test("Household Apps review persists a decision for every applicable card", async ({
+  page,
+}) => {
+  const founderCsrf = "csrf_founder_" + "a".repeat(32);
+  const appsCsrf = "csrf_apps_" + "b".repeat(32);
+  let mutationObserved = false;
+
+  await page.route("**/api/micasa/v1/onboarding/apps**", async (route) => {
+    expect(new URL(route.request().url()).searchParams.get("tier")).toBe(
+      "HOUSEHOLD",
+    );
+    if (route.request().method() === "PUT") {
+      mutationObserved = true;
+      expect(route.request().headers()["x-csrf-token"]).toBe(appsCsrf);
+      expect(route.request().postDataJSON()).toEqual({
+        expectedRevision: 4,
+        decisions: [
+          { serviceId: "gmail", decision: "NOT_NOW" },
+          {
+            serviceId: "finance",
+            decision: "ACKNOWLEDGED_UNAVAILABLE",
+          },
+        ],
+      });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          state: "REVIEWED",
+          tier: "HOUSEHOLD",
+          decisionRevision: 5,
+          operation: {
+            operationId: "operation:apps",
+            idempotencyKey: "micasa-apps-review:" + "c".repeat(64),
+            state: "VERIFIED",
+            retrySafe: true,
+            mutationPossible: false,
+            nextAction: "REVIEW_PRIVATE_APPS",
+            policyRevision: 9,
+            readbackAt: 2000,
+          },
+          decisions: [
+            { serviceId: "gmail", decision: "NOT_NOW" },
+            {
+              serviceId: "finance",
+              decision: "ACKNOWLEDGED_UNAVAILABLE",
+            },
+          ],
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        state: "REVIEW_REQUIRED",
+        tier: "HOUSEHOLD",
+        catalogVersion: "1.0",
+        catalogDigest: "d".repeat(64),
+        catalogTotalCards: 83,
+        applicableCardCount: 2,
+        decisionRevision: 4,
+        csrfToken: appsCsrf,
+        cards: [
+          {
+            serviceId: "gmail",
+            displayName: "Gmail",
+            category: "MAIL_CALENDAR_CONTACTS_TASKS",
+            placement: "DEDICATED_OR_SHARED",
+            catalogStatus: "PREVIEW",
+            connectEnabled: false,
+            decision: "UNREVIEWED",
+            details: "Mail actions remain independently scoped.",
+          },
+          {
+            serviceId: "finance",
+            displayName: "Financial aggregators",
+            category: "LIFE_COMMERCE_FINANCE_GAMING_VEHICLES",
+            placement: "PRIVATE_SHARE_ONLY",
+            catalogStatus: "POLICY_BLOCKED",
+            connectEnabled: false,
+            decision: "UNREVIEWED",
+            details: "Read-only evidence remains blocked pending review.",
+          },
+        ],
+      }),
+    });
+  });
+  await page.route(
+    "**/api/micasa/v1/onboarding",
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          state: "HOUSEHOLD_APPS_REQUIRED",
+          profileRevision: 8,
+          completedSteps: ["PROFILES", "PROVISIONING"],
+          csrfToken: founderCsrf,
+          generatedAvatars: null,
+        }),
+      });
+    },
+  );
+
+  await page.goto("/onboarding");
+  await expect(
+    page.getByRole("heading", {
+      name: "Review Household Apps & Services",
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Connect" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Review all as not now" }).click();
+  await expect(page.getByText("Every applicable card has a decision.")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Save Household app decisions" })
+    .click();
+
+  await expect.poll(() => mutationObserved).toBe(true);
+  await expect(
+    page.getByRole("heading", {
+      name: "Household Apps & Services reviewed",
+    }),
+  ).toBeVisible();
+});
+
 test("legacy repository route is no longer a product surface", async ({
   page,
 }) => {
