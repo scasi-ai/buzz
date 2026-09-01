@@ -8,8 +8,9 @@ import {
 	ShieldAlert,
 } from "lucide-react";
 import type { ChangeEvent } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+	type MiCasaChannelSubscription,
 	type MiCasaNostrSigner,
 	MiCasaRealtimeClient,
 	type SignedNostrEvent,
@@ -28,6 +29,19 @@ function timestamp(createdAt: number) {
 	});
 }
 
+function mergeSignedEvent(
+	current: SignedNostrEvent[] | undefined,
+	event: SignedNostrEvent,
+) {
+	return [
+		...(current ?? []).filter((item) => item.id !== event.id),
+		event,
+	].sort(
+		(left, right) =>
+			left.created_at - right.created_at || left.id.localeCompare(right.id),
+	);
+}
+
 export function MiCasaRoomTimeline({
 	roomId,
 	roomName,
@@ -42,6 +56,10 @@ export function MiCasaRoomTimeline({
 	const [publishStatus, setPublishStatus] = useState<
 		"IDLE" | "QUEUED" | "PUBLISHED" | "FAILED"
 	>("IDLE");
+	const [subscriptionState, setSubscriptionState] = useState<
+		"CONNECTING" | "LIVE" | "FAILED"
+	>("CONNECTING");
+	const [subscriptionAttempt, setSubscriptionAttempt] = useState(0);
 	const client = useMemo(
 		() =>
 			new MiCasaRealtimeClient({
@@ -62,6 +80,41 @@ export function MiCasaRoomTimeline({
 		queryFn: () => client.queryChannelHistory(roomId, 100),
 		retry: false,
 	});
+	useEffect(() => {
+		if (!history.isSuccess) return;
+		let active = true;
+		let subscription: MiCasaChannelSubscription | null = null;
+		setSubscriptionState("CONNECTING");
+		void client
+			.subscribeChannel(roomId, {
+				onEvent: (event) => {
+					if (!active) return;
+					queryClient.setQueryData<SignedNostrEvent[]>(
+						["micasa", "room-history", roomId],
+						(current) => mergeSignedEvent(current, event),
+					);
+				},
+				onState: (state) => {
+					if (!active) return;
+					if (state === "LIVE") setSubscriptionState("LIVE");
+					if (state === "FAILED") setSubscriptionState("FAILED");
+				},
+			})
+			.then((opened) => {
+				if (!active) {
+					opened.close();
+					return;
+				}
+				subscription = opened;
+			})
+			.catch(() => {
+				if (active) setSubscriptionState("FAILED");
+			});
+		return () => {
+			active = false;
+			subscription?.close();
+		};
+	}, [client, history.isSuccess, queryClient, roomId, subscriptionAttempt]);
 	const publish = useMutation({
 		mutationFn: (content: string) =>
 			client.publishChannelMessage(roomId, content),
@@ -69,12 +122,7 @@ export function MiCasaRoomTimeline({
 		onSuccess: (event) => {
 			queryClient.setQueryData<SignedNostrEvent[]>(
 				["micasa", "room-history", roomId],
-				(current = []) =>
-					[...current.filter((item) => item.id !== event.id), event].sort(
-						(left, right) =>
-							left.created_at - right.created_at ||
-							left.id.localeCompare(right.id),
-					),
+				(current) => mergeSignedEvent(current, event),
 			);
 			setMessage("");
 			setPublishStatus("PUBLISHED");
@@ -139,16 +187,41 @@ export function MiCasaRoomTimeline({
 						<p className="text-xs text-slate-500">
 							PA-authorized room · NIP-42 authenticated
 						</p>
+						<p
+							className={
+								subscriptionState === "LIVE"
+									? "mt-1 text-xs text-emerald-700"
+									: subscriptionState === "FAILED"
+										? "mt-1 text-xs text-amber-700"
+										: "mt-1 text-xs text-slate-500"
+							}
+							role="status"
+						>
+							{subscriptionState === "LIVE" && "Live signed updates"}
+							{subscriptionState === "CONNECTING" && "Connecting live updates…"}
+							{subscriptionState === "FAILED" && "Live updates disconnected"}
+						</p>
 					</div>
 				</div>
-				<Button
-					onClick={() => void history.refetch()}
-					size="sm"
-					variant="outline"
-				>
-					<RefreshCw aria-hidden="true" className="mr-2 h-3.5 w-3.5" />
-					Refresh
-				</Button>
+				<div className="flex items-center gap-2">
+					{subscriptionState === "FAILED" && (
+						<Button
+							onClick={() => setSubscriptionAttempt((value) => value + 1)}
+							size="sm"
+							variant="outline"
+						>
+							Retry live
+						</Button>
+					)}
+					<Button
+						onClick={() => void history.refetch()}
+						size="sm"
+						variant="outline"
+					>
+						<RefreshCw aria-hidden="true" className="mr-2 h-3.5 w-3.5" />
+						Refresh
+					</Button>
+				</div>
 			</header>
 
 			<div
