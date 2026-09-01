@@ -38,6 +38,7 @@ export type RoomSummary = {
 	name: string;
 	kind: RoomKind;
 	participants: RoomParticipantSummary[];
+	householdAgentExplicitlyAdded: boolean;
 };
 
 export type AgentSummary = {
@@ -106,6 +107,14 @@ function text(record: JsonObject, key: string, label: string): string {
 	const value = record[key];
 	if (typeof value !== "string" || value.trim().length === 0) {
 		throw new MiCasaContractError(label + "." + key + " must be a string.");
+	}
+	return value;
+}
+
+function boolean(record: JsonObject, key: string, label: string): boolean {
+	const value = record[key];
+	if (typeof value !== "boolean") {
+		throw new MiCasaContractError(label + "." + key + " must be a boolean.");
 	}
 	return value;
 }
@@ -310,6 +319,11 @@ function parseRoom(
 	const householdAgents = participants.filter(
 		(item) => item.kind === "HOUSEHOLD_AGENT",
 	);
+	const householdAgentExplicitlyAdded = boolean(
+		record,
+		"householdAgentExplicitlyAdded",
+		label,
+	);
 	const fixedHumanCount =
 		kind === "PERSONAL_AGENT" ? 1 : kind === "DM" ? 2 : null;
 	if (
@@ -322,8 +336,14 @@ function parseRoom(
 		(fixedHumanCount !== null && humans.size !== fixedHumanCount) ||
 		(kind === "GROUP" && humans.size < 3) ||
 		(kind === "HOUSEHOLD" &&
-			(humans.size < 1 || householdAgents.length !== 1)) ||
-		(kind !== "HOUSEHOLD" && householdAgents.length !== 0)
+			(humans.size < 1 ||
+				householdAgents.length !== 1 ||
+				householdAgentExplicitlyAdded)) ||
+		(kind === "GROUP" &&
+			(householdAgents.length > 1 ||
+				(householdAgents.length === 1) !== householdAgentExplicitlyAdded)) ||
+		((kind === "PERSONAL_AGENT" || kind === "DM") &&
+			(householdAgents.length !== 0 || householdAgentExplicitlyAdded))
 	) {
 		throw new MiCasaContractError(
 			label + ".participants violates MiCasa room topology.",
@@ -334,6 +354,7 @@ function parseRoom(
 		name: text(record, "name", label),
 		kind,
 		participants,
+		householdAgentExplicitlyAdded,
 	};
 }
 
@@ -518,3 +539,4 @@ export function parseInvitationAcceptance(value: unknown): {
 		destinationPath: path(record, "destinationPath", "invitationAcceptance"),
 	};
 }
+

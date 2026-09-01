@@ -96,18 +96,21 @@ function ready() {
 					name: "Household",
 					kind: "HOUSEHOLD",
 					participants: [alex, juniper, maya, spruce, rowan, maple, hearth],
+					householdAgentExplicitlyAdded: false,
 				},
 				{
 					id: "room:my-agent",
 					name: "My Agent",
 					kind: "PERSONAL_AGENT",
 					participants: [alex, juniper],
+					householdAgentExplicitlyAdded: false,
 				},
 				{
 					id: "room:family",
 					name: "Family",
 					kind: "GROUP",
 					participants: [alex, juniper, maya, spruce, rowan, maple],
+					householdAgentExplicitlyAdded: false,
 				},
 			],
 			activeRoomId: "room:family",
@@ -163,6 +166,7 @@ test("DMs require exactly two humans and both Personal Agents", () => {
 		name: "Alex and Maya",
 		kind: "DM",
 		participants: [alex, juniper, maya, spruce],
+		householdAgentExplicitlyAdded: false,
 	};
 	value.activeHousehold.activeRoomId = "room:dm";
 	assert.doesNotThrow(() => parseMiCasaBootstrap(value));
@@ -170,7 +174,7 @@ test("DMs require exactly two humans and both Personal Agents", () => {
 	assert.throws(() => parseMiCasaBootstrap(value), MiCasaContractError);
 });
 
-test("duplicate signed identities and Household Agents in groups are refused", () => {
+test("duplicate signed identities and unproven Household Agents are refused", () => {
 	const duplicate = ready();
 	duplicate.activeHousehold.rooms[2].participants[5] = {
 		...maple,
@@ -184,6 +188,21 @@ test("duplicate signed identities and Household Agents in groups are refused", (
 		() => parseMiCasaBootstrap(householdAgent),
 		MiCasaContractError,
 	);
+});
+
+test("a group accepts one explicitly authorized Household Agent", () => {
+	const value = ready();
+	value.activeHousehold.rooms[2].participants.push(hearth);
+	value.activeHousehold.rooms[2].householdAgentExplicitlyAdded = true;
+	const parsed = parseMiCasaBootstrap(value);
+	assert.equal(
+		parsed.activeHousehold.rooms[2].participants.at(-1)?.displayName,
+		"Hearth",
+	);
+
+	const missingAgent = ready();
+	missingAgent.activeHousehold.rooms[2].householdAgentExplicitlyAdded = true;
+	assert.throws(() => parseMiCasaBootstrap(missingAgent), MiCasaContractError);
 });
 
 test("every visible room must contain the viewer and the viewer's Personal Agent", () => {
@@ -269,3 +288,4 @@ test("agent summary avatars are safe and must match the room profile", () => {
 		"/api/micasa/v1/media/different";
 	assert.throws(() => parseMiCasaBootstrap(drift), MiCasaContractError);
 });
+
