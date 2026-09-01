@@ -60,7 +60,7 @@ function Loading() {
 					className="mx-auto h-8 w-8 animate-spin text-slate-600"
 				/>
 				<p className="mt-3 text-sm text-slate-600">
-					Loading Household Settings&
+					Loading Household Settingsâ€¦
 				</p>
 			</div>
 		</Shell>
@@ -281,7 +281,7 @@ function MemberEditor({
 							)}
 						</div>
 						<p className="mt-1 text-sm text-slate-500">
-							{lifecycleLabels[member.lifecycle]} ·{" "}
+							{lifecycleLabels[member.lifecycle]} Â·{" "}
 							{readinessLabels[member.personalAgentReadiness]}
 						</p>
 						{member.lifecycle !== "DELETED" && (
@@ -377,7 +377,7 @@ function InvitationCard({
 						{invitation.recipientEmail}
 					</p>
 					<p className="mt-2 text-xs text-slate-500">
-						{invitation.role === "ADMIN" ? "Administrator" : "Member"} ·
+						{invitation.role === "ADMIN" ? "Administrator" : "Member"} Â·
 						Personal Agent reserved
 					</p>
 				</div>
@@ -586,6 +586,15 @@ function HouseholdMembersContent({
 						}
 					>
 						Household Agent
+					</a>
+					<a
+						className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+						href={
+							"/settings/household/apps?household=" +
+							encodeURIComponent(snapshot.householdId)
+						}
+					>
+						Apps &amp; Data
 					</a>
 					<span className="inline-flex items-center rounded-full bg-slate-950 px-3 py-1.5 text-xs font-medium text-white">
 						<LockKeyhole aria-hidden="true" className="mr-2 h-3.5 w-3.5" />

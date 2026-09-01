@@ -9,8 +9,10 @@ import { Route as indexRouteImport } from "./routes/index";
 import { Route as inviteDotcodeRouteImport } from "./routes/invite.$code";
 import { Route as onboardingRouteImport } from "./routes/onboarding";
 import { Route as settingsHouseholdAgentRouteImport } from "./routes/settings.household.agent";
+import { Route as settingsHouseholdAppsRouteImport } from "./routes/settings.household.apps";
 import { Route as settingsHouseholdMembersRouteImport } from "./routes/settings.household.members";
 import { Route as settingsUserAgentRouteImport } from "./routes/settings.user.agent";
+import { Route as settingsUserAppsRouteImport } from "./routes/settings.user.apps";
 
 const indexRoute = indexRouteImport.update({
   id: "/",
@@ -28,6 +30,11 @@ const settingsHouseholdAgentRoute =
     path: "/settings/household/agent",
     getParentRoute: () => rootRouteImport,
   } as any);
+const settingsHouseholdAppsRoute = settingsHouseholdAppsRouteImport.update({
+  id: "/settings/household/apps",
+  path: "/settings/household/apps",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const settingsHouseholdMembersRoute =
   settingsHouseholdMembersRouteImport.update({
     id: "/settings/household/members",
@@ -37,6 +44,11 @@ const settingsHouseholdMembersRoute =
 const settingsUserAgentRoute = settingsUserAgentRouteImport.update({
   id: "/settings/user/agent",
   path: "/settings/user/agent",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const settingsUserAppsRoute = settingsUserAppsRouteImport.update({
+  id: "/settings/user/apps",
+  path: "/settings/user/apps",
   getParentRoute: () => rootRouteImport,
 } as any);
 const inviteDotcodeRoute = inviteDotcodeRouteImport.update({
@@ -49,16 +61,20 @@ export interface FileRoutesByFullPath {
   "/": typeof indexRoute;
   "/onboarding": typeof onboardingRoute;
   "/settings/household/agent": typeof settingsHouseholdAgentRoute;
+  "/settings/household/apps": typeof settingsHouseholdAppsRoute;
   "/settings/household/members": typeof settingsHouseholdMembersRoute;
   "/settings/user/agent": typeof settingsUserAgentRoute;
+  "/settings/user/apps": typeof settingsUserAppsRoute;
   "/invite/$code": typeof inviteDotcodeRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof indexRoute;
   "/onboarding": typeof onboardingRoute;
   "/settings/household/agent": typeof settingsHouseholdAgentRoute;
+  "/settings/household/apps": typeof settingsHouseholdAppsRoute;
   "/settings/household/members": typeof settingsHouseholdMembersRoute;
   "/settings/user/agent": typeof settingsUserAgentRoute;
+  "/settings/user/apps": typeof settingsUserAppsRoute;
   "/invite/$code": typeof inviteDotcodeRoute;
 }
 export interface FileRoutesById {
@@ -66,8 +82,10 @@ export interface FileRoutesById {
   "/": typeof indexRoute;
   "/onboarding": typeof onboardingRoute;
   "/settings/household/agent": typeof settingsHouseholdAgentRoute;
+  "/settings/household/apps": typeof settingsHouseholdAppsRoute;
   "/settings/household/members": typeof settingsHouseholdMembersRoute;
   "/settings/user/agent": typeof settingsUserAgentRoute;
+  "/settings/user/apps": typeof settingsUserAppsRoute;
   "/invite/$code": typeof inviteDotcodeRoute;
 }
 export interface FileRouteTypes {
@@ -76,24 +94,30 @@ export interface FileRouteTypes {
     | "/"
     | "/onboarding"
     | "/settings/household/agent"
+    | "/settings/household/apps"
     | "/settings/household/members"
     | "/settings/user/agent"
+    | "/settings/user/apps"
     | "/invite/$code";
   fileRoutesByTo: FileRoutesByTo;
   to:
     | "/"
     | "/onboarding"
     | "/settings/household/agent"
+    | "/settings/household/apps"
     | "/settings/household/members"
     | "/settings/user/agent"
+    | "/settings/user/apps"
     | "/invite/$code";
   id:
     | "__root__"
     | "/"
     | "/onboarding"
     | "/settings/household/agent"
+    | "/settings/household/apps"
     | "/settings/household/members"
     | "/settings/user/agent"
+    | "/settings/user/apps"
     | "/invite/$code";
   fileRoutesById: FileRoutesById;
 }
@@ -101,8 +125,10 @@ export interface RootRouteChildren {
   indexRoute: typeof indexRoute;
   onboardingRoute: typeof onboardingRoute;
   settingsHouseholdAgentRoute: typeof settingsHouseholdAgentRoute;
+  settingsHouseholdAppsRoute: typeof settingsHouseholdAppsRoute;
   settingsHouseholdMembersRoute: typeof settingsHouseholdMembersRoute;
   settingsUserAgentRoute: typeof settingsUserAgentRoute;
+  settingsUserAppsRoute: typeof settingsUserAppsRoute;
   inviteDotcodeRoute: typeof inviteDotcodeRoute;
 }
 
@@ -129,6 +155,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof settingsHouseholdAgentRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/settings/household/apps": {
+      id: "/settings/household/apps";
+      path: "/settings/household/apps";
+      fullPath: "/settings/household/apps";
+      preLoaderRoute: typeof settingsHouseholdAppsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/settings/household/members": {
       id: "/settings/household/members";
       path: "/settings/household/members";
@@ -141,6 +174,13 @@ declare module "@tanstack/react-router" {
       path: "/settings/user/agent";
       fullPath: "/settings/user/agent";
       preLoaderRoute: typeof settingsUserAgentRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/settings/user/apps": {
+      id: "/settings/user/apps";
+      path: "/settings/user/apps";
+      fullPath: "/settings/user/apps";
+      preLoaderRoute: typeof settingsUserAppsRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/invite/$code": {
@@ -157,8 +197,10 @@ const rootRouteChildren: RootRouteChildren = {
   indexRoute: indexRoute,
   onboardingRoute: onboardingRoute,
   settingsHouseholdAgentRoute: settingsHouseholdAgentRoute,
+  settingsHouseholdAppsRoute: settingsHouseholdAppsRoute,
   settingsHouseholdMembersRoute: settingsHouseholdMembersRoute,
   settingsUserAgentRoute: settingsUserAgentRoute,
+  settingsUserAppsRoute: settingsUserAppsRoute,
   inviteDotcodeRoute: inviteDotcodeRoute,
 };
 export const routeTree = rootRouteImport
