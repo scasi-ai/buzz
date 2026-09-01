@@ -320,8 +320,9 @@ test("founder onboarding captures named agents without a Buzz community step", a
   await expect(
     page.getByRole("heading", { name: "Creating your Household" }),
   ).toBeVisible();
-  await expect(page.getByText(/community address/i)).toHaveCount(0);
-  await expect(page.getByText(/Fizz|Honey|Pollen/)).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText(
+    /Buzz|community|relay|Fizz|Honey|Pollen/i,
+  );
 });
 
 test("legacy repository route is no longer a product surface", async ({

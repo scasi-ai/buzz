@@ -322,8 +322,8 @@ function FounderProfiles({
         <div className="mt-7 flex items-center justify-between gap-4 border-t border-slate-200 pt-6">
           <p className="max-w-xl text-xs leading-5 text-slate-500">
             Names and avatar acceptance are committed only after Personal-Agent
-            returns an authoritative readback. Technical relay and community
-            identifiers are generated privately.
+            returns an authoritative readback. Service identifiers are created
+            automatically and kept out of the Household experience.
           </p>
           <Button
             className="h-11 shrink-0 gap-2 rounded-xl bg-slate-950 px-5 text-white hover:bg-slate-800"
