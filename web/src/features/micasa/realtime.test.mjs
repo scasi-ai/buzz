@@ -192,7 +192,6 @@ test("an invalid or cross-channel inbound event fails closed", async () => {
   const sockets = [];
   const transport = client(sockets);
   const promise = transport.queryChannelHistory(CHANNEL);
-  await new Promise((resolve) => setTimeout(resolve, 0));
   sockets[0].socket.channel = "room:other";
 
   await assert.rejects(

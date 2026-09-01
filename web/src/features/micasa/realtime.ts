@@ -162,7 +162,6 @@ function sameUnsigned(
 
 function signedEvent(
   value: unknown,
-  *,
   expected: UnsignedNostrEvent | null,
   expectedPubkey: string | null,
 ): SignedNostrEvent {
@@ -196,7 +195,7 @@ function signedEvent(
   ) {
     fail("MICASA_REALTIME_EVENT_INVALID", "A signed event is invalid.");
   }
-  const checked = event as SignedNostrEvent;
+  const checked = event as unknown as SignedNostrEvent;
   if (
     expectedPubkey !== null &&
     checked.pubkey !== expectedPubkey
