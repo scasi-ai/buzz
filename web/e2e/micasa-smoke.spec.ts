@@ -82,6 +82,23 @@ test("ready Household renders only PA-authorized rooms and agents", async ({
 			body: JSON.stringify(readyBootstrap),
 		});
 	});
+	await page.route("**/api/micasa/v1/signer", async (route) => {
+		await route.fulfill({
+			status: 200,
+			contentType: "application/json",
+			body: JSON.stringify({
+				state: "ENROLLMENT_REQUIRED",
+				bindingId: "signer-binding-ready-test",
+				publicKey: null,
+				deviceId: null,
+				keyRevision: 0,
+				recoveryState: "SETUP_REQUIRED",
+				registrationRevision: 1,
+				enrollmentChallenge: "a".repeat(64),
+				csrfToken: "csrf_" + "s".repeat(40),
+			}),
+		});
+	});
 
 	await page.goto("/");
 
@@ -102,7 +119,12 @@ test("ready Household renders only PA-authorized rooms and agents", async ({
 	await expect(
 		page.getByRole("link", { name: /User Settings/ }),
 	).toHaveAttribute("href", "/settings/user/agent?household=household-1");
-	await expect(page.getByText("Realtime readiness is enforced")).toBeVisible();
+	await expect(
+		page.getByRole("heading", { name: "Secure messaging on this device" }),
+	).toBeVisible();
+	await expect(
+		page.getByRole("button", { name: "Secure this device" }),
+	).toBeVisible();
 	await expect(page.getByText(/communities\.buzz\.xyz/)).toHaveCount(0);
 	await expect(page.locator('a[href^="ws://"], a[href^="wss://"]')).toHaveCount(
 		0,
@@ -908,4 +930,207 @@ test("Apps & Data Settings preserve household/private boundaries and never imply
 	await expect(
 		page.getByText(/saving here never connects or disconnects a provider/),
 	).toBeVisible();
+});
+
+test("clean browser enrolls its PA-bound signer and mounts a real signed room transport", async ({
+	page,
+}) => {
+	const csrfToken = "csrf_" + "v".repeat(40);
+	const challenge = "f".repeat(64);
+	let enrolledPublicKey: string | null = null;
+	let enrollmentObserved = false;
+	await page.addInitScript(
+		({ historyEvent }) => {
+			class MiCasaTestWebSocket {
+				readyState = 1;
+				listeners = new Map<string, Set<(event: { data?: string }) => void>>();
+				url: string;
+
+				constructor(url: string) {
+					this.url = url;
+					queueMicrotask(() => {
+						this.emit("open", {});
+						this.emit("message", {
+							data: JSON.stringify(["AUTH", "challenge-123"]),
+						});
+					});
+				}
+
+				addEventListener(
+					type: string,
+					listener: (event: { data?: string }) => void,
+				) {
+					const listeners = this.listeners.get(type) ?? new Set();
+					listeners.add(listener);
+					this.listeners.set(type, listeners);
+				}
+
+				removeEventListener(
+					type: string,
+					listener: (event: { data?: string }) => void,
+				) {
+					this.listeners.get(type)?.delete(listener);
+				}
+
+				emit(type: string, event: { data?: string }) {
+					for (const listener of this.listeners.get(type) ?? []) {
+						listener(event);
+					}
+				}
+
+				send(payload: string) {
+					const frame = JSON.parse(payload);
+					if (frame[0] === "AUTH") {
+						queueMicrotask(() =>
+							this.emit("message", {
+								data: JSON.stringify(["OK", frame[1].id, true, ""]),
+							}),
+						);
+					} else if (frame[0] === "REQ") {
+						queueMicrotask(() => {
+							this.emit("message", {
+								data: JSON.stringify(["EVENT", frame[1], historyEvent]),
+							});
+							this.emit("message", {
+								data: JSON.stringify(["EOSE", frame[1]]),
+							});
+						});
+					} else if (frame[0] === "EVENT") {
+						queueMicrotask(() =>
+							this.emit("message", {
+								data: JSON.stringify(["OK", frame[1].id, true, ""]),
+							}),
+						);
+					}
+				}
+
+				close() {
+					this.readyState = 3;
+				}
+			}
+			Object.defineProperty(window, "WebSocket", {
+				value: MiCasaTestWebSocket,
+				configurable: true,
+			});
+		},
+		{
+			historyEvent: {
+				kind: 9,
+				created_at: 1788260400,
+				tags: [["h", "room-household"]],
+				content: "Welcome home from a real signed participant",
+				pubkey:
+					"989c0b76cb563971fdc9bef31ec06c3560f3249d6ee9e5d83c57625596e05f6f",
+				id: "a0590c1e8ff717c0fcb736018d6f5937d498905c2c0451e1184f39358532bfe5",
+				sig: "14d6dc118bc5bd94c2b12a27e0b1e26529b2bbe81f25b540ad56805b5af5250ff53bd28e746fdf30a6bc8a01797350688d45f9c259f2b413ba272f333782ca62",
+			},
+		},
+	);
+	await page.route("**/api/micasa/v1/bootstrap**", async (route) => {
+		await route.fulfill({
+			status: 200,
+			contentType: "application/json",
+			body: JSON.stringify(readyBootstrap),
+		});
+	});
+	await page.route("**/api/micasa/v1/signer", async (route) => {
+		if (route.request().method() === "PUT") {
+			enrollmentObserved = true;
+			expect(route.request().headers()["x-csrf-token"]).toBe(csrfToken);
+			const payload = route.request().postDataJSON();
+			expect(Object.keys(payload).sort()).toEqual([
+				"deviceLabel",
+				"expectedRegistrationRevision",
+				"proof",
+			]);
+			expect(payload.expectedRegistrationRevision).toBe(4);
+			expect(payload.proof.kind).toBe(27235);
+			expect(payload.proof.tags).toEqual([
+				["challenge", challenge],
+				["origin", "http://127.0.0.1:4173"],
+				["purpose", "micasa-signer-enrollment"],
+			]);
+			enrolledPublicKey = payload.proof.pubkey;
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({
+					state: "VERIFIED",
+					operation: {
+						operationId: "operation-signer",
+						idempotencyKey: "micasa-signer-enrollment:" + "i".repeat(64),
+						operation: "ENROLL_BROWSER_SIGNER",
+						retrySafe: true,
+						mutationPossible: false,
+						nextAction: "SET_UP_SIGNER_RECOVERY",
+						policyRevision: 9,
+						readbackAt: 1000,
+						effects: [
+							"PUBLIC_KEY_BOUND",
+							"DEVICE_REGISTERED",
+							"RECOVERY_NOT_ASSUMED",
+							"PRIVATE_KEY_NOT_RECEIVED",
+						],
+					},
+					readback: {
+						state: "READY",
+						bindingId: "signer-binding-e2e",
+						publicKey: enrolledPublicKey,
+						deviceId: "device-e2e",
+						keyRevision: 1,
+						recoveryState: "SETUP_REQUIRED",
+						registrationRevision: 5,
+						enrollmentChallenge: null,
+						csrfToken,
+					},
+				}),
+			});
+			return;
+		}
+		await route.fulfill({
+			status: 200,
+			contentType: "application/json",
+			body: JSON.stringify(
+				enrolledPublicKey
+					? {
+							state: "READY",
+							bindingId: "signer-binding-e2e",
+							publicKey: enrolledPublicKey,
+							deviceId: "device-e2e",
+							keyRevision: 1,
+							recoveryState: "SETUP_REQUIRED",
+							registrationRevision: 5,
+							enrollmentChallenge: null,
+							csrfToken,
+						}
+					: {
+							state: "ENROLLMENT_REQUIRED",
+							bindingId: "signer-binding-e2e",
+							publicKey: null,
+							deviceId: null,
+							keyRevision: 0,
+							recoveryState: "SETUP_REQUIRED",
+							registrationRevision: 4,
+							enrollmentChallenge: challenge,
+							csrfToken,
+						},
+			),
+		});
+	});
+
+	await page.goto("/");
+	await page.getByLabel("Device name").fill("Alex's Browser");
+	await page.getByRole("button", { name: "Secure this device" }).click();
+	await expect.poll(() => enrollmentObserved).toBe(true);
+	await expect(
+		page.getByRole("heading", { name: "Signed messages" }),
+	).toBeVisible();
+	await expect(
+		page.getByText("Welcome home from a real signed participant"),
+	).toBeVisible();
+	await page.getByLabel("Message Household").fill("Hello Hearth");
+	await page.getByRole("button", { name: "Send signed message" }).click();
+	await expect(page.getByText("Hello Hearth")).toBeVisible();
+	await expect(page.getByText("Published to Buzz/Nostr")).toBeVisible();
+	await expect(page.getByText(/NIP-07/)).toHaveCount(0);
 });

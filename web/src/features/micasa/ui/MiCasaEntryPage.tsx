@@ -7,7 +7,6 @@ import {
 	LogIn,
 	MessageCircle,
 	RefreshCw,
-	ShieldCheck,
 	UserRound,
 	Users,
 } from "lucide-react";
@@ -17,6 +16,8 @@ import type {
 	AgentSummary,
 	MiCasaBootstrap,
 } from "@/features/micasa/contracts";
+import { MiCasaRoomTimeline } from "@/features/micasa/ui/MiCasaRoomTimeline";
+import { MiCasaSignerBoundary } from "@/features/micasa/ui/MiCasaSignerBoundary";
 import { Button } from "@/shared/ui/button";
 
 const readinessLabels: Record<AgentReadiness, string> = {
@@ -196,26 +197,24 @@ function ReadyHousehold({
 							/>
 						</div>
 
-						<section className="mt-6 rounded-3xl border border-slate-200 bg-white p-6">
-							<div className="flex items-start gap-3">
-								<ShieldCheck
-									aria-hidden="true"
-									className="mt-0.5 h-5 w-5 text-slate-600"
-								/>
-								<div>
-									<h2 className="font-semibold text-slate-950">
-										Realtime readiness is enforced
-									</h2>
-									<p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-										MiCasa has loaded this Household from Personal-Agent. The
-										message timeline and composer remain unavailable until the
-										browser signer, Household relay, room authorization, and ACP
-										twin checks all pass. MiCasa never substitutes demo messages
-										or synthetic agent replies.
-									</p>
-								</div>
-							</div>
-						</section>
+						<div className="mt-6">
+							{activeRoom ? (
+								<MiCasaSignerBoundary>
+									{(signer) => (
+										<MiCasaRoomTimeline
+											roomId={activeRoom.id}
+											roomName={activeRoom.name}
+											signer={signer}
+										/>
+									)}
+								</MiCasaSignerBoundary>
+							) : (
+								<section className="rounded-3xl border border-slate-200 bg-white p-6 text-sm leading-6 text-slate-600">
+									Personal-Agent did not authorize an active room. No timeline
+									or composer was opened.
+								</section>
+							)}
+						</div>
 					</div>
 				</main>
 			</div>
