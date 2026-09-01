@@ -124,6 +124,7 @@ All configuration is via environment variables (or CLI flags — every env var h
 | Flag | Env Var | Default | Description |
 |------|---------|---------|-------------|
 | `--agents` | `BUZZ_ACP_AGENTS` | `1` | Number of agent subprocesses (1–32). |
+| `--max-batch-events` | `BUZZ_ACP_MAX_BATCH_EVENTS` | `50` | Maximum relay events coalesced into one ACP prompt (1–50). Set to `1` when an external dispatcher requires one independently correlated response per signed event. |
 | `--lazy-pool` | `BUZZ_ACP_LAZY_POOL` | `false` | Connect, subscribe, and queue accepted work before starting ACP/LLM subprocesses. The first accepted event wakes one pool initialization task; failures retry with bounded exponential backoff while work remains. |
 | `--heartbeat-interval` | `BUZZ_ACP_HEARTBEAT_INTERVAL` | `0` | Seconds between heartbeat prompts. `0` = disabled. Must be `0` or ≥10 when enabled. |
 | `--heartbeat-prompt` | `BUZZ_ACP_HEARTBEAT_PROMPT` | (built-in) | Custom heartbeat prompt text. Conflicts with `--heartbeat-prompt-file`. |

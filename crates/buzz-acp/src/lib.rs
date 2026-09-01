@@ -2164,8 +2164,9 @@ async fn tokio_main() -> Result<()> {
 
     let runtime_start_nonce = std::env::var("BUZZ_MANAGED_AGENT_START_NONCE").unwrap_or_default();
     let dedup_mode = config.dedup_mode;
-    let mut queue =
-        EventQueue::new(dedup_mode).with_in_flight_deadline(config.max_turn_duration_secs);
+    let mut queue = EventQueue::new(dedup_mode)
+        .with_max_batch_events(config.max_batch_events)
+        .with_in_flight_deadline(config.max_turn_duration_secs);
 
     // Online means the harness can receive work, not merely that its socket is
     // connected. Publishing after channel subscriptions gives desktop callers
@@ -6763,6 +6764,7 @@ mod build_mcp_servers_tests {
             idle_timeout_secs: config::DEFAULT_IDLE_TIMEOUT_SECS,
             max_turn_duration_secs: config::DEFAULT_MAX_TURN_DURATION_SECS,
             agents: 1,
+            max_batch_events: config::DEFAULT_MAX_BATCH_EVENTS as usize,
             heartbeat_interval_secs: 0,
             turn_liveness_secs: 10,
             heartbeat_prompt: None,
@@ -6987,6 +6989,7 @@ mod error_outcome_emission_tests {
             idle_timeout_secs: config::DEFAULT_IDLE_TIMEOUT_SECS,
             max_turn_duration_secs: config::DEFAULT_MAX_TURN_DURATION_SECS,
             agents: 1,
+            max_batch_events: config::DEFAULT_MAX_BATCH_EVENTS as usize,
             heartbeat_interval_secs: 0,
             turn_liveness_secs: 10,
             heartbeat_prompt: None,
