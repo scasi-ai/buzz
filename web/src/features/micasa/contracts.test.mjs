@@ -37,6 +37,7 @@ const juniper = participant({
 	kind: "PERSONAL_AGENT",
 	displayName: "Juniper",
 	nostrPubkey: "b".repeat(64),
+	avatarPath: "/api/micasa/v1/media/juniper",
 });
 const mayaId = "tenant-member:" + "2".repeat(64);
 const maya = participant({
@@ -74,6 +75,7 @@ const hearth = participant({
 	kind: "HOUSEHOLD_AGENT",
 	displayName: "Hearth",
 	nostrPubkey: "0".repeat(64),
+	avatarPath: "/api/micasa/v1/media/hearth",
 });
 
 function ready() {
@@ -113,11 +115,13 @@ function ready() {
 				id: "agent:household",
 				displayName: "Hearth",
 				readiness: "READY",
+				avatarPath: "/api/micasa/v1/media/hearth",
 			},
 			personalAgent: {
 				id: "agent:personal",
 				displayName: "Juniper",
 				readiness: "READY",
+				avatarPath: "/api/micasa/v1/media/juniper",
 			},
 		},
 	};
@@ -252,4 +256,16 @@ test("a pending human signer may be null but every agent key is mandatory", () =
 		nostrPubkey: null,
 	};
 	assert.throws(() => parseMiCasaBootstrap(missingAgent), MiCasaContractError);
+});
+
+test("agent summary avatars are safe and must match the room profile", () => {
+	const unsafe = ready();
+	unsafe.activeHousehold.personalAgent.avatarPath =
+		"https://tracker.example/juniper.png";
+	assert.throws(() => parseMiCasaBootstrap(unsafe), MiCasaContractError);
+
+	const drift = ready();
+	drift.activeHousehold.personalAgent.avatarPath =
+		"/api/micasa/v1/media/different";
+	assert.throws(() => parseMiCasaBootstrap(drift), MiCasaContractError);
 });

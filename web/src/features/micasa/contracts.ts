@@ -44,6 +44,7 @@ export type AgentSummary = {
 	id: string;
 	displayName: string;
 	readiness: AgentReadiness;
+	avatarPath: string | null;
 };
 
 export type ActiveHousehold = HouseholdSummary & {
@@ -346,6 +347,7 @@ function parseAgent(value: unknown, label: string): AgentSummary {
 			["PROVISIONING", "READY", "UNAVAILABLE", "ERROR"] as const,
 			label + ".readiness",
 		),
+		avatarPath: nullableMediaPath(record, "avatarPath", label),
 	};
 }
 
@@ -385,7 +387,8 @@ function parseActiveHousehold(
 		if (
 			viewerAgents.length !== 1 ||
 			viewerAgents[0].subjectId !== personalAgent.id ||
-			viewerAgents[0].displayName !== personalAgent.displayName
+			viewerAgents[0].displayName !== personalAgent.displayName ||
+			viewerAgents[0].avatarPath !== personalAgent.avatarPath
 		) {
 			throw new MiCasaContractError(
 				room.id + " does not carry the authoritative Personal Agent profile.",
@@ -398,7 +401,8 @@ function parseActiveHousehold(
 			if (
 				projected.length !== 1 ||
 				projected[0].subjectId !== householdAgent.id ||
-				projected[0].displayName !== householdAgent.displayName
+				projected[0].displayName !== householdAgent.displayName ||
+				projected[0].avatarPath !== householdAgent.avatarPath
 			) {
 				throw new MiCasaContractError(
 					room.id +

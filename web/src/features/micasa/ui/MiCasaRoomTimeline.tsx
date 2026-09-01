@@ -314,6 +314,9 @@ export function MiCasaRoomTimeline({
 				) : (
 					events.map((event) => {
 						const mine = event.pubkey === viewerPublicKey;
+						const participant = participants.find(
+							(item) => item.nostrPubkey === event.pubkey,
+						);
 						return (
 							<article
 								className={mine ? "ml-auto max-w-[85%]" : "max-w-[85%]"}
@@ -337,6 +340,13 @@ export function MiCasaRoomTimeline({
 											: "mt-1 text-xs text-slate-400"
 									}
 								>
+									{participant?.avatarPath && (
+										<img
+											alt=""
+											className="mr-1 inline-block h-4 w-4 rounded-full object-cover align-text-bottom"
+											src={participant.avatarPath}
+										/>
+									)}
 									{authorLabel(event, viewerPublicKey, participants)} ·{" "}
 									{timestamp(event.created_at)}
 								</p>

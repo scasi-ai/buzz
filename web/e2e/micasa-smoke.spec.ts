@@ -14,7 +14,7 @@ const personalAgentParticipant = {
 	kind: "PERSONAL_AGENT",
 	displayName: "Juniper",
 	nostrPubkey: "b".repeat(64),
-	avatarPath: null,
+	avatarPath: "/api/micasa/v1/media/juniper",
 };
 const householdAgentParticipant = {
 	subjectId: "agent-household",
@@ -23,7 +23,7 @@ const householdAgentParticipant = {
 	displayName: "Hearth",
 	nostrPubkey:
 		"989c0b76cb563971fdc9bef31ec06c3560f3249d6ee9e5d83c57625596e05f6f",
-	avatarPath: null,
+	avatarPath: "/api/micasa/v1/media/hearth",
 };
 
 const readyBootstrap = {
@@ -66,11 +66,13 @@ const readyBootstrap = {
 			id: "agent-household",
 			displayName: "Hearth",
 			readiness: "READY",
+			avatarPath: "/api/micasa/v1/media/hearth",
 		},
 		personalAgent: {
 			id: "agent-personal",
 			displayName: "Juniper",
 			readiness: "READY",
+			avatarPath: "/api/micasa/v1/media/juniper",
 		},
 	},
 };
@@ -141,7 +143,9 @@ test("ready Household renders only PA-authorized rooms and agents", async ({
 		"Household",
 	);
 	await expect(page.getByText("Hearth")).toBeVisible();
+	await expect(page.getByAltText("Hearth avatar")).toBeVisible();
 	await expect(page.getByText("Juniper")).toBeVisible();
+	await expect(page.getByAltText("Juniper avatar")).toBeVisible();
 	await expect(
 		page.getByRole("link", { name: "Household Settings" }),
 	).toHaveAttribute(
