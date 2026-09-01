@@ -25,8 +25,18 @@ function cards(tier = "HOUSEHOLD") {
 			category: "MAIL_CALENDAR_CONTACTS_TASKS",
 			placement: tier === "HOUSEHOLD" ? "DEDICATED_OR_SHARED" : "PRIVATE",
 			catalogStatus: "PREVIEW",
+			routeKinds: ["HOSTED_MCP", "DIRECT_API"],
 			connectEnabled: false,
 			decision: "NOT_NOW",
+			authorizationStatus: "NOT_CONNECTED",
+			resourceStatus: "SELECTION_REQUIRED",
+			syncStatus: "NOT_STARTED",
+			operationStatus: "BLOCKED",
+			providerConnectionId: null,
+			serviceGrantId: null,
+			consentReceiptId: null,
+			audience: [tier === "HOUSEHOLD" ? "HOUSEHOLD" : "SELF"],
+			selectedResourceIds: [],
 			details: "Calendar access is reviewed separately from this preference.",
 		},
 		{
@@ -35,8 +45,18 @@ function cards(tier = "HOUSEHOLD") {
 			category: "HOME_DEVICES",
 			placement: tier === "HOUSEHOLD" ? "HOUSEHOLD" : "PRIVATE",
 			catalogStatus: "COMING_LATER",
+			routeKinds: ["DEVICE_BRIDGE"],
 			connectEnabled: false,
 			decision: "ACKNOWLEDGED_UNAVAILABLE",
+			authorizationStatus: "NOT_CONNECTED",
+			resourceStatus: "SELECTION_REQUIRED",
+			syncStatus: "NOT_STARTED",
+			operationStatus: "BLOCKED",
+			providerConnectionId: null,
+			serviceGrantId: null,
+			consentReceiptId: null,
+			audience: [tier === "HOUSEHOLD" ? "HOUSEHOLD" : "SELF"],
+			selectedResourceIds: [],
 			details: "This integration is not available yet.",
 		},
 	];
@@ -109,6 +129,42 @@ test("parses private settings only with private card placement", () => {
 	const parsed = parseAppsSettingsSnapshot(snapshot("PRIVATE"));
 	assert.equal(parsed.tier, "PRIVATE");
 	assert.ok(parsed.cards.every((card) => card.placement === "PRIVATE"));
+});
+test("projects explicit connector maturity and blocked runtime state", () => {
+	const parsed = parseAppsSettingsSnapshot(snapshot());
+	assert.deepEqual(parsed.cards[0].routeKinds, ["HOSTED_MCP", "DIRECT_API"]);
+	assert.equal(parsed.cards[0].authorizationStatus, "NOT_CONNECTED");
+	assert.equal(parsed.cards[0].resourceStatus, "SELECTION_REQUIRED");
+	assert.equal(parsed.cards[0].syncStatus, "NOT_STARTED");
+	assert.equal(parsed.cards[0].operationStatus, "BLOCKED");
+	assert.deepEqual(parsed.cards[0].audience, ["HOUSEHOLD"]);
+	assert.equal(parsed.cards[0].serviceGrantId, null);
+});
+test("rejects fake grants and readiness on unavailable cards", () => {
+	const value = snapshot();
+	value.cards[0] = {
+		...value.cards[0],
+		authorizationStatus: "CONNECTED",
+		resourceStatus: "SELECTED",
+		syncStatus: "READY",
+		operationStatus: "ADMITTED",
+		providerConnectionId: "connection-one",
+		serviceGrantId: "grant-one",
+		consentReceiptId: "receipt-one",
+		selectedResourceIds: ["calendar-one"],
+	};
+	assert.throws(
+		() => parseAppsSettingsSnapshot(value),
+		AppsSettingsContractError,
+	);
+});
+test("rejects Household audience in private connector state", () => {
+	const value = snapshot("PRIVATE");
+	value.cards[0] = { ...value.cards[0], audience: ["HOUSEHOLD"] };
+	assert.throws(
+		() => parseAppsSettingsSnapshot(value),
+		AppsSettingsContractError,
+	);
 });
 test("rejects relay, operator, grant, and credential fields", () => {
 	for (const field of [
@@ -255,6 +311,19 @@ test("rejects scope, household, catalog, and revision drift", () => {
 			AppsSettingsContractError,
 		);
 	}
+});
+test("rejects connector-state drift during a decision-only mutation", () => {
+	const before = parseAppsSettingsSnapshot(snapshot());
+	const requested = decisions();
+	const changed = mutation(before, requested);
+	changed.readback.cards[0] = {
+		...changed.readback.cards[0],
+		routeKinds: ["DIRECT_API"],
+	};
+	assert.throws(
+		() => parseAppsSettingsMutation(changed, before, requested),
+		AppsSettingsContractError,
+	);
 });
 test("rejects card order or decision readback drift", () => {
 	const before = parseAppsSettingsSnapshot(snapshot());

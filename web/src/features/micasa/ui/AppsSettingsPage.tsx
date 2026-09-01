@@ -20,6 +20,7 @@ import {
 	defaultReviewDecision,
 } from "@/features/micasa/apps-onboarding";
 import {
+	type AppsSettingsCard,
 	type AppsSettingsSnapshot,
 	loadAppsSettings,
 	saveAppsSettings,
@@ -53,6 +54,47 @@ const placementLabels: Record<AppsReviewCard["placement"], string> = {
 	DEDICATED_OR_SHARED: "Dedicated or shared account only",
 	PRIVATE_SHARE_ONLY: "Connect privately, then share selected data",
 	PRIVATE: "Private to you",
+};
+const routeLabels: Record<AppsSettingsCard["routeKinds"][number], string> = {
+	HOSTED_MCP: "Hosted MCP",
+	DIRECT_API: "Direct provider API",
+	STANDARD_PROTOCOL: "Standard protocol",
+	DEVICE_BRIDGE: "Device or edge bridge",
+	IMPORT: "Import",
+	PROVIDER_REVIEW: "Provider review",
+};
+const authorizationLabels: Record<
+	AppsSettingsCard["authorizationStatus"],
+	string
+> = {
+	NOT_CONNECTED: "Not connected",
+	CONSENT_REQUIRED: "Consent required",
+	AUTHORIZING: "Authorization in progress",
+	CALLBACK_PENDING: "Provider callback pending",
+	CONNECTED: "Connected",
+	REAUTH_REQUIRED: "Reauthorization required",
+	REVOKING: "Revoking",
+	REVOKED: "Revoked",
+	OUTCOME_UNKNOWN: "Provider outcome unknown",
+};
+const resourceLabels: Record<AppsSettingsCard["resourceStatus"], string> = {
+	SELECTION_REQUIRED: "Selection required",
+	SELECTED: "Resources selected",
+	SCOPE_CHANGE_PENDING: "Scope change pending",
+};
+const syncLabels: Record<AppsSettingsCard["syncStatus"], string> = {
+	NOT_STARTED: "Not started",
+	SYNCING: "Syncing",
+	READY: "Ready",
+	DEGRADED: "Degraded",
+	STALE: "Stale",
+	FAILED: "Failed",
+};
+const operationLabels: Record<AppsSettingsCard["operationStatus"], string> = {
+	ADMITTED: "Tools admitted",
+	APPROVAL_REQUIRED: "Approval required",
+	BLOCKED: "Tools blocked",
+	UNSUPPORTED: "Unsupported",
 };
 
 function Brand() {
@@ -129,7 +171,7 @@ function DecisionCard({
 	decision,
 	setDecision,
 }: {
-	card: AppsReviewCard;
+	card: AppsSettingsCard;
 	decision: AppsDecision;
 	setDecision: (decision: AppsDecision) => void;
 }) {
@@ -147,11 +189,46 @@ function DecisionCard({
 					{statusLabels[card.catalogStatus]}
 				</span>
 			</div>
+			<div className="mt-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+				<div className="rounded-xl bg-slate-50 p-2.5">
+					<p className="text-slate-500">Authorization</p>
+					<p className="mt-1 font-medium text-slate-800">
+						{authorizationLabels[card.authorizationStatus]}
+					</p>
+				</div>
+				<div className="rounded-xl bg-slate-50 p-2.5">
+					<p className="text-slate-500">Resources</p>
+					<p className="mt-1 font-medium text-slate-800">
+						{resourceLabels[card.resourceStatus]}
+					</p>
+				</div>
+				<div className="rounded-xl bg-slate-50 p-2.5">
+					<p className="text-slate-500">Sync</p>
+					<p className="mt-1 font-medium text-slate-800">
+						{syncLabels[card.syncStatus]}
+					</p>
+				</div>
+				<div className="rounded-xl bg-slate-50 p-2.5">
+					<p className="text-slate-500">Agent tools</p>
+					<p className="mt-1 font-medium text-slate-800">
+						{operationLabels[card.operationStatus]}
+					</p>
+				</div>
+			</div>
 			<details className="mt-3 text-sm text-slate-600">
 				<summary className="cursor-pointer font-medium text-slate-700">
-					Data boundary
+					Data boundary and connection route
 				</summary>
 				<p className="mt-2 leading-6">{card.details}</p>
+				<p className="mt-2 text-xs text-slate-500">
+					{card.routeKinds.map((route) => routeLabels[route]).join(" · ")}
+				</p>
+				{card.selectedResourceIds.length > 0 && (
+					<p className="mt-2 text-xs text-slate-500">
+						{card.selectedResourceIds.length} stable resource
+						{card.selectedResourceIds.length === 1 ? "" : "s"} selected
+					</p>
+				)}
 			</details>
 			<div className="mt-4 flex flex-wrap gap-2">
 				{card.connectEnabled && (

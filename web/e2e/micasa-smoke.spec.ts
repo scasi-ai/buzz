@@ -772,8 +772,18 @@ test("Apps & Data Settings preserve household/private boundaries and never imply
 				category: "MAIL_CALENDAR_CONTACTS_TASKS",
 				placement: tier === "HOUSEHOLD" ? "HOUSEHOLD" : "PRIVATE",
 				catalogStatus: "PREVIEW",
+				routeKinds: ["HOSTED_MCP", "DIRECT_API"],
 				connectEnabled: false,
 				decision: "NOT_NOW",
+				authorizationStatus: "NOT_CONNECTED",
+				resourceStatus: "SELECTION_REQUIRED",
+				syncStatus: "NOT_STARTED",
+				operationStatus: "BLOCKED",
+				providerConnectionId: null,
+				serviceGrantId: null,
+				consentReceiptId: null,
+				audience: [tier === "HOUSEHOLD" ? "HOUSEHOLD" : "SELF"],
+				selectedResourceIds: [],
 				details: "Select exact calendars in a separate authorization flow.",
 			},
 			{
@@ -782,8 +792,18 @@ test("Apps & Data Settings preserve household/private boundaries and never imply
 				category: "HOME_DEVICES",
 				placement: tier === "HOUSEHOLD" ? "HOUSEHOLD" : "PRIVATE",
 				catalogStatus: "COMING_LATER",
+				routeKinds: ["DEVICE_BRIDGE"],
 				connectEnabled: false,
 				decision: "ACKNOWLEDGED_UNAVAILABLE",
+				authorizationStatus: "NOT_CONNECTED",
+				resourceStatus: "SELECTION_REQUIRED",
+				syncStatus: "NOT_STARTED",
+				operationStatus: "BLOCKED",
+				providerConnectionId: null,
+				serviceGrantId: null,
+				consentReceiptId: null,
+				audience: [tier === "HOUSEHOLD" ? "HOUSEHOLD" : "SELF"],
+				selectedResourceIds: [],
 				details: "This integration is not available yet.",
 			},
 		],
@@ -863,9 +883,16 @@ test("Apps & Data Settings preserve household/private boundaries and never imply
 		page.getByRole("heading", { name: "Household Apps & Data" }),
 	).toBeVisible();
 	await expect(page.getByText("Head of Household only")).toBeVisible();
+	await expect(page.getByText("Not connected").first()).toBeVisible();
+	await expect(page.getByText("Selection required").first()).toBeVisible();
+	await expect(page.getByText("Tools blocked").first()).toBeVisible();
 	await expect(
 		page.getByRole("button", { name: "Request connection setup" }),
 	).toHaveCount(0);
+	await page.getByText("Data boundary and connection route").first().click();
+	await expect(
+		page.getByText("Hosted MCP · Direct provider API"),
+	).toBeVisible();
 	await page.getByRole("button", { name: "Not applicable" }).first().click();
 	await page.getByRole("button", { name: "Save decisions" }).click();
 	await expect.poll(() => householdSaveObserved).toBe(true);

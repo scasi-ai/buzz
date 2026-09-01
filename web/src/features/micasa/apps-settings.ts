@@ -15,10 +15,59 @@ export class AppsSettingsContractError extends Error {
 	}
 }
 
-export type AppsSettingsSnapshot = Omit<AppsReviewSnapshot, "state"> & {
+export type AppsConnectorRouteKind =
+	| "HOSTED_MCP"
+	| "DIRECT_API"
+	| "STANDARD_PROTOCOL"
+	| "DEVICE_BRIDGE"
+	| "IMPORT"
+	| "PROVIDER_REVIEW";
+export type AppsAuthorizationStatus =
+	| "NOT_CONNECTED"
+	| "CONSENT_REQUIRED"
+	| "AUTHORIZING"
+	| "CALLBACK_PENDING"
+	| "CONNECTED"
+	| "REAUTH_REQUIRED"
+	| "REVOKING"
+	| "REVOKED"
+	| "OUTCOME_UNKNOWN";
+export type AppsResourceStatus =
+	| "SELECTION_REQUIRED"
+	| "SELECTED"
+	| "SCOPE_CHANGE_PENDING";
+export type AppsSyncStatus =
+	| "NOT_STARTED"
+	| "SYNCING"
+	| "READY"
+	| "DEGRADED"
+	| "STALE"
+	| "FAILED";
+export type AppsOperationStatus =
+	| "ADMITTED"
+	| "APPROVAL_REQUIRED"
+	| "BLOCKED"
+	| "UNSUPPORTED";
+export type AppsSettingsCard = AppsReviewCard & {
+	routeKinds: AppsConnectorRouteKind[];
+	authorizationStatus: AppsAuthorizationStatus;
+	resourceStatus: AppsResourceStatus;
+	syncStatus: AppsSyncStatus;
+	operationStatus: AppsOperationStatus;
+	providerConnectionId: string | null;
+	serviceGrantId: string | null;
+	consentReceiptId: string | null;
+	audience: Array<"HOUSEHOLD" | "SELF">;
+	selectedResourceIds: string[];
+};
+export type AppsSettingsSnapshot = Omit<
+	AppsReviewSnapshot,
+	"state" | "cards"
+> & {
 	state: "EDITABLE";
 	surface: "SETTINGS";
 	householdId: string;
+	cards: AppsSettingsCard[];
 };
 export type AppsSettingsMutation = {
 	state: "UPDATED";
@@ -59,6 +108,67 @@ const EFFECTS = [
 	"CREDENTIALS_UNCHANGED",
 	"HOUSEHOLD_PRIVATE_BOUNDARY_PRESERVED",
 ] as const;
+const ROUTES: AppsConnectorRouteKind[] = [
+	"HOSTED_MCP",
+	"DIRECT_API",
+	"STANDARD_PROTOCOL",
+	"DEVICE_BRIDGE",
+	"IMPORT",
+	"PROVIDER_REVIEW",
+];
+const AUTHORIZATION: AppsAuthorizationStatus[] = [
+	"NOT_CONNECTED",
+	"CONSENT_REQUIRED",
+	"AUTHORIZING",
+	"CALLBACK_PENDING",
+	"CONNECTED",
+	"REAUTH_REQUIRED",
+	"REVOKING",
+	"REVOKED",
+	"OUTCOME_UNKNOWN",
+];
+const RESOURCES: AppsResourceStatus[] = [
+	"SELECTION_REQUIRED",
+	"SELECTED",
+	"SCOPE_CHANGE_PENDING",
+];
+const SYNC: AppsSyncStatus[] = [
+	"NOT_STARTED",
+	"SYNCING",
+	"READY",
+	"DEGRADED",
+	"STALE",
+	"FAILED",
+];
+const OPERATION_STATES: AppsOperationStatus[] = [
+	"ADMITTED",
+	"APPROVAL_REQUIRED",
+	"BLOCKED",
+	"UNSUPPORTED",
+];
+const REVIEW_CARD_FIELDS = [
+	"serviceId",
+	"displayName",
+	"category",
+	"placement",
+	"catalogStatus",
+	"connectEnabled",
+	"decision",
+	"details",
+] as const;
+const SETTINGS_CARD_FIELDS = [
+	...REVIEW_CARD_FIELDS,
+	"routeKinds",
+	"authorizationStatus",
+	"resourceStatus",
+	"syncStatus",
+	"operationStatus",
+	"providerConnectionId",
+	"serviceGrantId",
+	"consentReceiptId",
+	"audience",
+	"selectedResourceIds",
+] as const;
 const REQUEST_TIMEOUT_MS = 15_000;
 const REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 
@@ -88,6 +198,14 @@ function ref(record: JsonObject, key: string, label: string): string {
 	}
 	return value;
 }
+function optionalRef(
+	record: JsonObject,
+	key: string,
+	label: string,
+): string | null {
+	if (record[key] === null) return null;
+	return ref(record, key, label);
+}
 function positive(record: JsonObject, key: string, label: string): number {
 	const value = record[key];
 	if (!Number.isSafeInteger(value) || (value as number) < 1) {
@@ -95,13 +213,48 @@ function positive(record: JsonObject, key: string, label: string): number {
 	}
 	return value as number;
 }
-function parseTier(value: unknown): AppsTier {
-	if (value !== "HOUSEHOLD" && value !== "PRIVATE") {
-		fail("Apps Settings tier is unsupported.");
+function choice<T extends string>(
+	value: unknown,
+	choices: readonly T[],
+	label: string,
+): T {
+	if (typeof value !== "string" || !choices.includes(value as T)) {
+		fail(label + " is unsupported.");
 	}
-	return value;
+	return value as T;
+}
+function stringList(
+	value: unknown,
+	label: string,
+	choices?: readonly string[],
+): string[] {
+	if (
+		!Array.isArray(value) ||
+		new Set(value).size !== value.length ||
+		value.some(
+			(item) =>
+				typeof item !== "string" ||
+				!REF.test(item) ||
+				(choices !== undefined && !choices.includes(item)),
+		)
+	) {
+		fail(label + " is invalid.");
+	}
+	return value as string[];
+}
+function parseTier(value: unknown): AppsTier {
+	return choice(value, ["HOUSEHOLD", "PRIVATE"] as const, "appsSettings.tier");
 }
 function reviewedProjection(record: JsonObject): AppsReviewSnapshot {
+	if (!Array.isArray(record.cards)) {
+		fail("Apps Settings cards are invalid.");
+	}
+	const cards = record.cards.map((value, index) => {
+		const raw = object(value, "appsSettings.cards[" + index + "]");
+		return Object.fromEntries(
+			REVIEW_CARD_FIELDS.map((field) => [field, raw[field]]),
+		);
+	});
 	try {
 		return parseAppsReviewSnapshot({
 			state: "REVIEWED",
@@ -112,7 +265,7 @@ function reviewedProjection(record: JsonObject): AppsReviewSnapshot {
 			applicableCardCount: record.applicableCardCount,
 			decisionRevision: record.decisionRevision,
 			csrfToken: record.csrfToken,
-			cards: record.cards,
+			cards,
 		});
 	} catch (error) {
 		if (error instanceof AppsOnboardingContractError) {
@@ -120,6 +273,96 @@ function reviewedProjection(record: JsonObject): AppsReviewSnapshot {
 		}
 		throw error;
 	}
+}
+function parseSettingsCard(
+	value: unknown,
+	reviewed: AppsReviewCard,
+	tier: AppsTier,
+	index: number,
+): AppsSettingsCard {
+	const label = "appsSettings.cards[" + index + "]";
+	const record = object(value, label);
+	exact(record, SETTINGS_CARD_FIELDS, label);
+	const routeKinds = stringList(
+		record.routeKinds,
+		label + ".routeKinds",
+		ROUTES,
+	);
+	if (routeKinds.length === 0) fail(label + ".routeKinds is empty.");
+	const authorizationStatus = choice(
+		record.authorizationStatus,
+		AUTHORIZATION,
+		label + ".authorizationStatus",
+	);
+	const resourceStatus = choice(
+		record.resourceStatus,
+		RESOURCES,
+		label + ".resourceStatus",
+	);
+	const syncStatus = choice(record.syncStatus, SYNC, label + ".syncStatus");
+	const operationStatus = choice(
+		record.operationStatus,
+		OPERATION_STATES,
+		label + ".operationStatus",
+	);
+	const providerConnectionId = optionalRef(
+		record,
+		"providerConnectionId",
+		label,
+	);
+	const serviceGrantId = optionalRef(record, "serviceGrantId", label);
+	const consentReceiptId = optionalRef(record, "consentReceiptId", label);
+	const audience = stringList(record.audience, label + ".audience", [
+		"HOUSEHOLD",
+		"SELF",
+	]) as Array<"HOUSEHOLD" | "SELF">;
+	const selectedResourceIds = stringList(
+		record.selectedResourceIds,
+		label + ".selectedResourceIds",
+	);
+	const expectedAudience = tier === "HOUSEHOLD" ? "HOUSEHOLD" : "SELF";
+	const connected = [
+		"CONNECTED",
+		"REAUTH_REQUIRED",
+		"REVOKING",
+		"OUTCOME_UNKNOWN",
+	].includes(authorizationStatus);
+	if (
+		audience.length !== 1 ||
+		audience[0] !== expectedAudience ||
+		(connected &&
+			(!reviewed.connectEnabled ||
+				providerConnectionId === null ||
+				serviceGrantId === null ||
+				consentReceiptId === null ||
+				resourceStatus === "SELECTION_REQUIRED" ||
+				selectedResourceIds.length === 0 ||
+				syncStatus === "NOT_STARTED")) ||
+		(!connected &&
+			(authorizationStatus !== "NOT_CONNECTED" ||
+				providerConnectionId !== null ||
+				serviceGrantId !== null ||
+				consentReceiptId !== null ||
+				resourceStatus !== "SELECTION_REQUIRED" ||
+				syncStatus !== "NOT_STARTED" ||
+				operationStatus !== "BLOCKED" ||
+				selectedResourceIds.length !== 0))
+	) {
+		fail(label + " claims an invalid connector boundary.");
+	}
+	return {
+		...reviewed,
+		routeKinds: routeKinds as AppsConnectorRouteKind[],
+		authorizationStatus,
+		resourceStatus,
+		syncStatus,
+		operationStatus,
+		providerConnectionId,
+		serviceGrantId,
+		consentReceiptId,
+		audience,
+		selectedResourceIds,
+	};
 }
 
 export function parseAppsSettingsSnapshot(
@@ -146,12 +389,16 @@ export function parseAppsSettingsSnapshot(
 	if (record.state !== "EDITABLE" || record.surface !== "SETTINGS") {
 		fail("Apps Settings is not editable.");
 	}
+	const tier = parseTier(record.tier);
 	const reviewed = reviewedProjection(record);
 	return {
 		...reviewed,
 		state: "EDITABLE",
 		surface: "SETTINGS",
 		householdId: ref(record, "householdId", "appsSettings"),
+		cards: reviewed.cards.map((card, index) =>
+			parseSettingsCard((record.cards as unknown[])[index], card, tier, index),
+		),
 	};
 }
 
@@ -220,6 +467,21 @@ function parseOperation(
 		effects: effects as string[],
 	};
 }
+function connectorFingerprint(card: AppsSettingsCard) {
+	return {
+		serviceId: card.serviceId,
+		routeKinds: card.routeKinds,
+		authorizationStatus: card.authorizationStatus,
+		resourceStatus: card.resourceStatus,
+		syncStatus: card.syncStatus,
+		operationStatus: card.operationStatus,
+		providerConnectionId: card.providerConnectionId,
+		serviceGrantId: card.serviceGrantId,
+		consentReceiptId: card.consentReceiptId,
+		audience: card.audience,
+		selectedResourceIds: card.selectedResourceIds,
+	};
+}
 
 export function parseAppsSettingsMutation(
 	value: unknown,
@@ -253,7 +515,9 @@ export function parseAppsSettingsMutation(
 				serviceId: card.serviceId,
 				decision: card.decision,
 			})),
-		) !== JSON.stringify(requested)
+		) !== JSON.stringify(requested) ||
+		JSON.stringify(readback.cards.map(connectorFingerprint)) !==
+			JSON.stringify(before.cards.map(connectorFingerprint))
 	) {
 		fail("Apps Settings mutation lacks exact catalog decision readback.");
 	}
