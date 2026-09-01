@@ -210,6 +210,120 @@ test("claiming a Household invitation sends CSRF protection to PA", async ({
   await expect.poll(() => claimObserved).toBe(true);
 });
 
+
+test("founder onboarding captures named agents without a Buzz community step", async ({
+  page,
+}) => {
+  let mutationObserved = false;
+  const csrfToken = "csrf_" + "a".repeat(40);
+
+  await page.route("**/api/micasa/v1/onboarding**", async (route) => {
+    if (route.request().method() === "PUT") {
+      mutationObserved = true;
+      expect(route.request().headers()["x-csrf-token"]).toBe(csrfToken);
+      expect(route.request().postDataJSON()).toEqual({
+        expectedRevision: 7,
+        householdName: "River House",
+        humanDisplayName: "Alex Rivera",
+        householdAgent: {
+          displayName: "Hearth",
+          avatarArtifactId: "avatar:household-generated",
+          avatarAltText: "Generated Household Agent avatar",
+          avatarAccepted: true,
+        },
+        personalAgent: {
+          displayName: "Juniper",
+          avatarArtifactId: "avatar:personal-generated",
+          avatarAltText: "Generated Personal Agent avatar",
+          avatarAccepted: true,
+        },
+      });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          state: "PROVISIONING",
+          profileRevision: 8,
+          operation: {
+            operationId: "operation:founder-profiles",
+            idempotencyKey: "micasa-founder-profiles:" + "b".repeat(64),
+            state: "VERIFIED",
+            retrySafe: true,
+            mutationPossible: false,
+            nextAction: "WAIT_FOR_PROVISIONING",
+            policyRevision: 3,
+            readbackAt: 2000,
+          },
+          readback: {
+            householdName: "River House",
+            humanDisplayName: "Alex Rivera",
+            householdAgent: {
+              id: "agent:household",
+              displayName: "Hearth",
+              avatarArtifactId: "avatar:household-generated",
+            },
+            personalAgent: {
+              id: "agent:personal",
+              displayName: "Juniper",
+              avatarArtifactId: "avatar:personal-generated",
+            },
+          },
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        state: "PROFILE_REQUIRED",
+        profileRevision: 7,
+        completedSteps: [],
+        csrfToken,
+        generatedAvatars: {
+          householdAgent: {
+            artifactId: "avatar:household-generated",
+            mediaType: "image/webp",
+            altText: "Generated Household Agent avatar",
+          },
+          personalAgent: {
+            artifactId: "avatar:personal-generated",
+            mediaType: "image/webp",
+            altText: "Generated Personal Agent avatar",
+          },
+        },
+      }),
+    });
+  });
+
+  await page.goto("/onboarding");
+  await expect(
+    page.getByRole("heading", {
+      name: "Name your Household and its agents",
+    }),
+  ).toBeVisible();
+  await page.getByLabel("Household name").fill("River House");
+  await page.getByLabel("Your display name").fill("Alex Rivera");
+  await page.getByLabel("Household Agent name").fill("Hearth");
+  await page.getByLabel("My Agent name").fill("Juniper");
+  await page
+    .getByLabel("Use the generated Household Agent avatar")
+    .check();
+  await page.getByLabel("Use the generated My Agent avatar").check();
+  await page
+    .getByRole("button", {
+      name: "Save profiles and start provisioning",
+    })
+    .click();
+
+  await expect.poll(() => mutationObserved).toBe(true);
+  await expect(
+    page.getByRole("heading", { name: "Creating your Household" }),
+  ).toBeVisible();
+  await expect(page.getByText(/community address/i)).toHaveCount(0);
+  await expect(page.getByText(/Fizz|Honey|Pollen/)).toHaveCount(0);
+});
+
 test("legacy repository route is no longer a product surface", async ({
   page,
 }) => {

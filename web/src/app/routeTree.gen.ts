@@ -7,10 +7,16 @@
 import { Route as rootRouteImport } from "./routes/root";
 import { Route as indexRouteImport } from "./routes/index";
 import { Route as inviteDotcodeRouteImport } from "./routes/invite.$code";
+import { Route as onboardingRouteImport } from "./routes/onboarding";
 
 const indexRoute = indexRouteImport.update({
   id: "/",
   path: "/",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const onboardingRoute = onboardingRouteImport.update({
+  id: "/onboarding",
+  path: "/onboarding",
   getParentRoute: () => rootRouteImport,
 } as any);
 const inviteDotcodeRoute = inviteDotcodeRouteImport.update({
@@ -21,27 +27,31 @@ const inviteDotcodeRoute = inviteDotcodeRouteImport.update({
 
 export interface FileRoutesByFullPath {
   "/": typeof indexRoute;
+  "/onboarding": typeof onboardingRoute;
   "/invite/$code": typeof inviteDotcodeRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof indexRoute;
+  "/onboarding": typeof onboardingRoute;
   "/invite/$code": typeof inviteDotcodeRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   "/": typeof indexRoute;
+  "/onboarding": typeof onboardingRoute;
   "/invite/$code": typeof inviteDotcodeRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
-  fullPaths: "/" | "/invite/$code";
+  fullPaths: "/" | "/onboarding" | "/invite/$code";
   fileRoutesByTo: FileRoutesByTo;
-  to: "/" | "/invite/$code";
-  id: "__root__" | "/" | "/invite/$code";
+  to: "/" | "/onboarding" | "/invite/$code";
+  id: "__root__" | "/" | "/onboarding" | "/invite/$code";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
   indexRoute: typeof indexRoute;
+  onboardingRoute: typeof onboardingRoute;
   inviteDotcodeRoute: typeof inviteDotcodeRoute;
 }
 
@@ -52,6 +62,13 @@ declare module "@tanstack/react-router" {
       path: "/";
       fullPath: "/";
       preLoaderRoute: typeof indexRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/onboarding": {
+      id: "/onboarding";
+      path: "/onboarding";
+      fullPath: "/onboarding";
+      preLoaderRoute: typeof onboardingRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/invite/$code": {
@@ -66,6 +83,7 @@ declare module "@tanstack/react-router" {
 
 const rootRouteChildren: RootRouteChildren = {
   indexRoute: indexRoute,
+  onboardingRoute: onboardingRoute,
   inviteDotcodeRoute: inviteDotcodeRoute,
 };
 export const routeTree = rootRouteImport
