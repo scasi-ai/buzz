@@ -162,8 +162,13 @@ function sameUnsigned(
 
 function signedEvent(
   value: unknown,
-  expected: UnsignedNostrEvent | null,
-  expectedPubkey: string | null,
+  {
+    expected,
+    expectedPubkey,
+  }: {
+    expected: UnsignedNostrEvent | null;
+    expectedPubkey: string | null;
+  },
 ): SignedNostrEvent {
   if (
     typeof value !== "object" ||
