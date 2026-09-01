@@ -125,7 +125,7 @@ test("Household invitation uses Scasi sign-in and discloses My Agent", async ({
   page,
 }) => {
   await page.route(
-    "**/api/micasa/v1/invitations/family-code",
+    "**/api/micasa/v1/invitations/family-code**",
     async (route) => {
       await route.fulfill({
         status: 200,
@@ -165,7 +165,7 @@ test("claiming a Household invitation sends CSRF protection to PA", async ({
 }) => {
   let claimObserved = false;
   await page.route(
-    "**/api/micasa/v1/invitations/family-code",
+    "**/api/micasa/v1/invitations/family-code**",
     async (route) => {
       if (route.request().method() === "POST") {
         claimObserved = true;
