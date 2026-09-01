@@ -80,7 +80,7 @@ async function requestJson<T>(
 
 function selectedIdentifier(name: "household" | "room"): string | null {
   const value = new URL(window.location.href).searchParams.get(name);
-  return value && /^[A-Za-z0-9_-]{1,128}$/.test(value) ? value : null;
+  return value && /^[A-Za-z0-9._:-]{1,256}$/.test(value) ? value : null;
 }
 
 export function loadMiCasaBootstrap(): Promise<MiCasaBootstrap> {
