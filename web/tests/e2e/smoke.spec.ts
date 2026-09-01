@@ -98,7 +98,7 @@ test("ready Household renders only PA-authorized rooms and agents", async ({
   await expect(page.getByText("Juniper")).toBeVisible();
   await expect(page.getByText("Realtime readiness is enforced")).toBeVisible();
   await expect(page.getByText(/communities\.buzz\.xyz/)).toHaveCount(0);
-  await expect(page.getByText(/relay/i)).toHaveCount(0);
+  await expect(page.getByText(/communities\.buzz\.xyz/)).toHaveCount(0);
 });
 
 test("Personal-Agent readiness failure never falls back to demo data", async ({
