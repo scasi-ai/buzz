@@ -103,6 +103,11 @@ pub struct Config {
     pub relay_url: String,
     /// Public WebSocket URL of the dedicated device-pairing relay, when configured.
     pub pairing_relay_url: Option<String>,
+    /// Optional HMAC-gated Personal-Agent gateway and public NIP-42 alias.
+    ///
+    /// Both BUZZ_MICASA_PUBLIC_RELAY_URL and
+    /// BUZZ_MICASA_GATEWAY_SECRET_HEX must be configured together.
+    pub micasa_gateway: Option<crate::micasa_gateway::MiCasaGatewayConfig>,
     /// Maximum number of concurrent WebSocket connections.
     pub max_connections: usize,
     /// Maximum number of concurrently executing message handlers.
@@ -553,6 +558,12 @@ impl Config {
             })
             .transpose()?;
 
+        let micasa_gateway = crate::micasa_gateway::MiCasaGatewayConfig::from_values(
+            std::env::var("BUZZ_MICASA_PUBLIC_RELAY_URL").ok(),
+            std::env::var("BUZZ_MICASA_GATEWAY_SECRET_HEX").ok(),
+        )
+        .map_err(ConfigError::InvalidValue)?;
+
         let max_connections = std::env::var("BUZZ_MAX_CONNECTIONS")
             .ok()
             .and_then(|v| v.parse().ok())
@@ -998,6 +1009,7 @@ impl Config {
             db_read_pool_size,
             relay_url,
             pairing_relay_url,
+            micasa_gateway,
             max_connections,
             max_concurrent_handlers,
             send_buffer_size,

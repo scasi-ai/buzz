@@ -331,8 +331,40 @@ async fn nip11_or_ws_handler(
             if state.shutting_down.load(Ordering::Relaxed) {
                 return (StatusCode::SERVICE_UNAVAILABLE, "relay restarting").into_response();
             }
+            let now = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+                Ok(value) => value.as_secs(),
+                Err(_) => {
+                    return (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "relay: gateway authorization unavailable",
+                    )
+                        .into_response();
+                }
+            };
+            let micasa_public_relay_url = match crate::micasa_gateway::authorize_gateway_headers(
+                state.config.micasa_gateway.as_ref(),
+                &headers,
+                tenant.host(),
+                now,
+            ) {
+                Ok(value) => value,
+                Err(_) => {
+                    metrics::counter!(
+                        "buzz_auth_failures_total",
+                        "reason" => "micasa_gateway_invalid"
+                    )
+                    .increment(1);
+                    return (
+                        StatusCode::FORBIDDEN,
+                        "relay: gateway authorization refused",
+                    )
+                        .into_response();
+                }
+            };
             limit_relay_websocket(ws, max_frame_bytes)
-                .on_upgrade(move |socket| handle_connection(socket, state, addr, tenant))
+                .on_upgrade(move |socket| {
+                    handle_connection(socket, state, addr, tenant, micasa_public_relay_url)
+                })
                 .into_response()
         }
         Err(_) => {

@@ -23,6 +23,8 @@ pub mod error;
 pub mod handlers;
 /// Stateless HMAC-signed relay invite tokens (mint/verify).
 pub mod invite_token;
+/// Trusted Personal-Agent gateway authorization for the public MiCasa NIP-42 alias.
+pub mod micasa_gateway;
 /// Inter-relay mesh startup wiring (`BUZZ_MESH` seam).
 pub mod mesh_boot;
 /// Prometheus metrics: recorder, upkeep, HTTP middleware.
