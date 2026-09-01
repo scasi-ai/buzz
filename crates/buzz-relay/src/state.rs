@@ -1499,6 +1499,7 @@ mod tests {
                 buzz_core::tenant::CommunityId::from_uuid(Uuid::nil()),
                 "test.local".to_string(),
             ),
+            micasa_public_relay_url: None,
             remote_addr: "127.0.0.1:1234".parse().unwrap(),
             auth_state: RwLock::new(AuthState::Failed),
             subscriptions: Arc::new(Mutex::new(HashMap::new())),

@@ -9,7 +9,7 @@
 use std::fmt;
 
 use axum::http::HeaderMap;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 
 const HEADER_AUTHORITY: &str = "x-micasa-gateway-authority";
