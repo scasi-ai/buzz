@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { MiCasaContractError, parseMiCasaBootstrap } from "./contracts.ts";
+import {
+	MiCasaContractError,
+	parseGroupHouseholdAgentMutation,
+	parseGroupHouseholdAgentSettings,
+	parseMiCasaBootstrap,
+} from "./contracts.ts";
 
 const viewerId = "tenant-member:" + "1".repeat(64);
 
@@ -289,3 +294,107 @@ test("agent summary avatars are safe and must match the room profile", () => {
 	assert.throws(() => parseMiCasaBootstrap(drift), MiCasaContractError);
 });
 
+function groupHouseholdAgentSettings(overrides = {}) {
+	return {
+		state: "READY",
+		householdId: "tenant:" + "4".repeat(64),
+		roomId: "conversation:group:" + "5".repeat(64),
+		householdAgent: {
+			id: "agent-instance:" + "6".repeat(64),
+			displayName: "Hearth",
+			avatarPath: "/api/micasa/v1/media/hearth",
+		},
+		included: false,
+		canManage: true,
+		membershipRevision: 8,
+		policyRevision: 13,
+		authorityDigest: "a".repeat(64),
+		csrfToken: "csrf_" + "b".repeat(48),
+		observedAt: 1_788_278_400,
+		expiresAt: 1_788_278_520,
+		...overrides,
+	};
+}
+
+function groupHouseholdAgentMutation(overrides = {}) {
+	const readback = groupHouseholdAgentSettings({
+		included: true,
+		membershipRevision: 9,
+		authorityDigest: "c".repeat(64),
+	});
+	return {
+		state: "VERIFIED",
+		operation: {
+			operationId: "operation:" + "7".repeat(64),
+			operation: "ADD_HOUSEHOLD_AGENT",
+			idempotencyKey: "group-agent-operation-0001",
+			auditEventId: "audit-event:" + "8".repeat(64),
+			effects: [
+				"ACP_ROOM_AUTHORITY_REVISED",
+				"AUDIT_EVENT_APPENDED",
+				"BOOTSTRAP_READ_MODEL_REBUILT",
+				"BUZZ_CHANNEL_MEMBERSHIP_RECONCILED",
+				"HOUSEHOLD_AGENT_ADDED",
+				"NOSTR_ROOM_AUTHORITY_REVISED",
+				"PA_ROOM_MEMBERSHIP_COMMITTED",
+			],
+			retrySafe: true,
+			mutationPossible: false,
+		},
+		readback,
+		...overrides,
+	};
+}
+
+test("parses safe Group Household Agent controls", () => {
+	const parsed = parseGroupHouseholdAgentSettings(
+		groupHouseholdAgentSettings(),
+	);
+	assert.equal(parsed.householdAgent.displayName, "Hearth");
+	assert.equal(parsed.included, false);
+	assert.equal(parsed.canManage, true);
+	assert.equal(parsed.membershipRevision, 8);
+});
+
+test("Group Household Agent controls reject stale or unsafe authority", () => {
+	for (const value of [
+		groupHouseholdAgentSettings({ expiresAt: 1_788_278_400 }),
+		groupHouseholdAgentSettings({ authorityDigest: "not-a-digest" }),
+		groupHouseholdAgentSettings({ csrfToken: "short" }),
+		groupHouseholdAgentSettings({
+			householdAgent: {
+				id: "agent-instance:" + "6".repeat(64),
+				displayName: "Hearth",
+				avatarPath: "https://internal.example/avatar",
+			},
+		}),
+	]) {
+		assert.throws(
+			() => parseGroupHouseholdAgentSettings(value),
+			MiCasaContractError,
+		);
+	}
+});
+
+test("parses verified group mutation and rejects incomplete or contradictory receipts", () => {
+	const parsed = parseGroupHouseholdAgentMutation(
+		groupHouseholdAgentMutation(),
+	);
+	assert.equal(parsed.operation.operation, "ADD_HOUSEHOLD_AGENT");
+	assert.equal(parsed.readback.included, true);
+
+	const missingEffect = groupHouseholdAgentMutation();
+	missingEffect.operation.effects.pop();
+	assert.throws(
+		() => parseGroupHouseholdAgentMutation(missingEffect),
+		MiCasaContractError,
+	);
+
+	const contradictory = groupHouseholdAgentMutation({
+		readback: groupHouseholdAgentSettings({ included: false }),
+	});
+	assert.throws(
+		() => parseGroupHouseholdAgentMutation(contradictory),
+		MiCasaContractError,
+	);
+});

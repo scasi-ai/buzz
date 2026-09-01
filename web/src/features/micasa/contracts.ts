@@ -90,11 +90,46 @@ export type HouseholdInvitation = {
 	csrfToken?: string;
 };
 
+export type GroupHouseholdAgentSettings = {
+	state: "READY";
+	householdId: string;
+	roomId: string;
+	householdAgent: {
+		id: string;
+		displayName: string;
+		avatarPath: string | null;
+	};
+	included: boolean;
+	canManage: boolean;
+	membershipRevision: number;
+	policyRevision: number;
+	authorityDigest: string;
+	csrfToken: string;
+	observedAt: number;
+	expiresAt: number;
+};
+
+export type GroupHouseholdAgentMutation = {
+	state: "VERIFIED" | "REPLAYED";
+	operation: {
+		operationId: string;
+		operation: "ADD_HOUSEHOLD_AGENT" | "REMOVE_HOUSEHOLD_AGENT";
+		idempotencyKey: string;
+		auditEventId: string;
+		effects: string[];
+		retrySafe: true;
+		mutationPossible: false;
+	};
+	readback: GroupHouseholdAgentSettings;
+};
+
 type JsonObject = Record<string, unknown>;
 
 const PUBLIC_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 const HEX_64 = /^[0-9a-f]{64}$/;
 const MAX_ROOM_PARTICIPANTS = 1_025;
+const CSRF_TOKEN = /^[A-Za-z0-9_-]{32,256}$/;
+const IDEMPOTENCY_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{15,191}$/;
 
 function object(value: unknown, label: string): JsonObject {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -210,6 +245,20 @@ function choice<const Values extends readonly string[]>(
 		throw new MiCasaContractError(label + " has an unsupported value.");
 	}
 	return value as Values[number];
+}
+
+function positiveInteger(
+	record: JsonObject,
+	key: string,
+	label: string,
+): number {
+	const value = record[key];
+	if (!Number.isSafeInteger(value) || (value as number) < 1) {
+		throw new MiCasaContractError(
+			label + "." + key + " must be a positive integer.",
+		);
+	}
+	return value as number;
 }
 
 function array(value: unknown, label: string): unknown[] {
@@ -531,6 +580,152 @@ export function parseHouseholdInvitation(value: unknown): HouseholdInvitation {
 	return invitation;
 }
 
+export function parseGroupHouseholdAgentSettings(
+	value: unknown,
+	label = "groupHouseholdAgent",
+): GroupHouseholdAgentSettings {
+	const record = object(value, label);
+	if (record.state !== "READY") {
+		throw new MiCasaContractError(label + ".state must be READY.");
+	}
+	const agent = object(record.householdAgent, label + ".householdAgent");
+	const authorityDigest = text(record, "authorityDigest", label);
+	const csrfToken = text(record, "csrfToken", label);
+	const observedAt = positiveInteger(record, "observedAt", label);
+	const expiresAt = positiveInteger(record, "expiresAt", label);
+	if (!HEX_64.test(authorityDigest)) {
+		throw new MiCasaContractError(label + ".authorityDigest is invalid.");
+	}
+	if (!CSRF_TOKEN.test(csrfToken)) {
+		throw new MiCasaContractError(label + ".csrfToken is invalid.");
+	}
+	if (observedAt >= expiresAt) {
+		throw new MiCasaContractError(label + " has an invalid authority window.");
+	}
+	return {
+		state: "READY",
+		householdId: publicReference(record, "householdId", label),
+		roomId: publicReference(record, "roomId", label),
+		householdAgent: {
+			id: publicReference(agent, "id", label + ".householdAgent"),
+			displayName: text(agent, "displayName", label + ".householdAgent"),
+			avatarPath: nullableMediaPath(
+				agent,
+				"avatarPath",
+				label + ".householdAgent",
+			),
+		},
+		included: boolean(record, "included", label),
+		canManage: boolean(record, "canManage", label),
+		membershipRevision: positiveInteger(record, "membershipRevision", label),
+		policyRevision: positiveInteger(record, "policyRevision", label),
+		authorityDigest,
+		csrfToken,
+		observedAt,
+		expiresAt,
+	};
+}
+
+export function parseGroupHouseholdAgentMutation(
+	value: unknown,
+): GroupHouseholdAgentMutation {
+	const record = object(value, "groupHouseholdAgentMutation");
+	const state = choice(
+		record.state,
+		["VERIFIED", "REPLAYED"] as const,
+		"groupHouseholdAgentMutation.state",
+	);
+	const operationRecord = object(
+		record.operation,
+		"groupHouseholdAgentMutation.operation",
+	);
+	const operation = choice(
+		operationRecord.operation,
+		["ADD_HOUSEHOLD_AGENT", "REMOVE_HOUSEHOLD_AGENT"] as const,
+		"groupHouseholdAgentMutation.operation.operation",
+	);
+	const idempotencyKey = text(
+		operationRecord,
+		"idempotencyKey",
+		"groupHouseholdAgentMutation.operation",
+	);
+	if (!IDEMPOTENCY_KEY.test(idempotencyKey)) {
+		throw new MiCasaContractError(
+			"groupHouseholdAgentMutation.operation.idempotencyKey is invalid.",
+		);
+	}
+	const effects = array(
+		operationRecord.effects,
+		"groupHouseholdAgentMutation.operation.effects",
+	).map((effect, index) => {
+		if (typeof effect !== "string" || !PUBLIC_REF.test(effect)) {
+			throw new MiCasaContractError(
+				"groupHouseholdAgentMutation.operation.effects[" +
+					index +
+					"] is invalid.",
+			);
+		}
+		return effect;
+	});
+	const required = new Set([
+		"PA_ROOM_MEMBERSHIP_COMMITTED",
+		"BUZZ_CHANNEL_MEMBERSHIP_RECONCILED",
+		"NOSTR_ROOM_AUTHORITY_REVISED",
+		"ACP_ROOM_AUTHORITY_REVISED",
+		"BOOTSTRAP_READ_MODEL_REBUILT",
+		"AUDIT_EVENT_APPENDED",
+		operation === "ADD_HOUSEHOLD_AGENT"
+			? "HOUSEHOLD_AGENT_ADDED"
+			: "HOUSEHOLD_AGENT_REMOVED",
+	]);
+	if (
+		new Set(effects).size !== required.size ||
+		effects.some((effect) => !required.has(effect))
+	) {
+		throw new MiCasaContractError(
+			"groupHouseholdAgentMutation.operation.effects is incomplete.",
+		);
+	}
+	if (
+		operationRecord.retrySafe !== true ||
+		operationRecord.mutationPossible !== false
+	) {
+		throw new MiCasaContractError(
+			"groupHouseholdAgentMutation.operation has unsafe retry metadata.",
+		);
+	}
+	const readback = parseGroupHouseholdAgentSettings(
+		record.readback,
+		"groupHouseholdAgentMutation.readback",
+	);
+	if (readback.included !== (operation === "ADD_HOUSEHOLD_AGENT")) {
+		throw new MiCasaContractError(
+			"groupHouseholdAgentMutation readback contradicts the operation.",
+		);
+	}
+	return {
+		state,
+		operation: {
+			operationId: publicReference(
+				operationRecord,
+				"operationId",
+				"groupHouseholdAgentMutation.operation",
+			),
+			operation,
+			idempotencyKey,
+			auditEventId: publicReference(
+				operationRecord,
+				"auditEventId",
+				"groupHouseholdAgentMutation.operation",
+			),
+			effects,
+			retrySafe: true,
+			mutationPossible: false,
+		},
+		readback,
+	};
+}
+
 export function parseInvitationAcceptance(value: unknown): {
 	destinationPath: string;
 } {
@@ -539,4 +734,3 @@ export function parseInvitationAcceptance(value: unknown): {
 		destinationPath: path(record, "destinationPath", "invitationAcceptance"),
 	};
 }
-

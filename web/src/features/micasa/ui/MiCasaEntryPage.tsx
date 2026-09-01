@@ -16,6 +16,7 @@ import type {
 	AgentSummary,
 	MiCasaBootstrap,
 } from "@/features/micasa/contracts";
+import { MiCasaGroupHouseholdAgentControl } from "@/features/micasa/ui/MiCasaGroupHouseholdAgentControl";
 import { MiCasaRoomTimeline } from "@/features/micasa/ui/MiCasaRoomTimeline";
 import { MiCasaSignerBoundary } from "@/features/micasa/ui/MiCasaSignerBoundary";
 import { Button } from "@/shared/ui/button";
@@ -206,6 +207,13 @@ function ReadyHousehold({
 								household={false}
 							/>
 						</div>
+
+						{activeRoom?.kind === "GROUP" && (
+							<MiCasaGroupHouseholdAgentControl
+								householdId={activeHousehold.id}
+								room={activeRoom}
+							/>
+						)}
 
 						<div className="mt-6">
 							{activeRoom ? (

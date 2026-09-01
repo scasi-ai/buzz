@@ -49,6 +49,7 @@ const readyBootstrap = {
 				id: "room-household",
 				name: "Household",
 				kind: "HOUSEHOLD",
+				householdAgentExplicitlyAdded: false,
 				participants: [
 					viewerParticipant,
 					personalAgentParticipant,
@@ -59,6 +60,7 @@ const readyBootstrap = {
 				id: "room-agent",
 				name: "My Agent",
 				kind: "PERSONAL_AGENT",
+				householdAgentExplicitlyAdded: false,
 				participants: [viewerParticipant, personalAgentParticipant],
 			},
 		],
@@ -1170,4 +1172,215 @@ test("clean browser enrolls its PA-bound signer and mounts a real signed room tr
 	await expect(page.getByText("Hello Hearth")).toBeVisible();
 	await expect(page.getByText("Published to Buzz/Nostr")).toBeVisible();
 	await expect(page.getByText(/NIP-07/)).toHaveCount(0);
+});
+
+test("group owner adds and removes the Household Agent with verified PA readback", async ({
+	page,
+}) => {
+	let included = false;
+	let membershipRevision = 8;
+	let authorityDigest = "a".repeat(64);
+	let addObserved = false;
+	let removeObserved = false;
+	const groupRoom = {
+		id: "room-family",
+		name: "Family plans",
+		kind: "GROUP",
+		householdAgentExplicitlyAdded: false,
+		participants: [
+			viewerParticipant,
+			personalAgentParticipant,
+			{
+				subjectId: "member-2",
+				memberId: "member-2",
+				kind: "HUMAN",
+				displayName: "Maya",
+				nostrPubkey: "c".repeat(64),
+				avatarPath: null,
+			},
+			{
+				subjectId: "agent-maya",
+				memberId: "member-2",
+				kind: "PERSONAL_AGENT",
+				displayName: "Spruce",
+				nostrPubkey: "d".repeat(64),
+				avatarPath: null,
+			},
+			{
+				subjectId: "member-3",
+				memberId: "member-3",
+				kind: "HUMAN",
+				displayName: "Rowan",
+				nostrPubkey: "e".repeat(64),
+				avatarPath: null,
+			},
+			{
+				subjectId: "agent-rowan",
+				memberId: "member-3",
+				kind: "PERSONAL_AGENT",
+				displayName: "Maple",
+				nostrPubkey: "f".repeat(64),
+				avatarPath: null,
+			},
+		],
+	};
+	const bootstrap = structuredClone(readyBootstrap);
+	bootstrap.activeHousehold.activeRoomId = groupRoom.id;
+	bootstrap.activeHousehold.rooms.push(groupRoom);
+
+	await page.route("**/api/micasa/v1/bootstrap**", async (route) => {
+		const value = structuredClone(bootstrap);
+		const projectedGroup = value.activeHousehold.rooms.find(
+			(room) => room.id === groupRoom.id,
+		);
+		if (!projectedGroup) {
+			throw new Error("Group fixture is missing.");
+		}
+		projectedGroup.householdAgentExplicitlyAdded = included;
+		if (included) {
+			projectedGroup.participants.push(householdAgentParticipant);
+		}
+		await route.fulfill({
+			status: 200,
+			contentType: "application/json",
+			body: JSON.stringify(value),
+		});
+	});
+	await page.route("**/api/micasa/v1/signer", async (route) => {
+		await route.fulfill({
+			status: 200,
+			contentType: "application/json",
+			body: JSON.stringify({
+				state: "ENROLLMENT_REQUIRED",
+				bindingId: "signer-binding-group-agent-test",
+				publicKey: null,
+				deviceId: null,
+				keyRevision: 0,
+				recoveryState: "SETUP_REQUIRED",
+				registrationRevision: 1,
+				enrollmentChallenge: "1".repeat(64),
+				csrfToken: "csrf_" + "2".repeat(48),
+			}),
+		});
+	});
+	await page.route(
+		"**/api/micasa/v1/households/household-1/rooms/room-family/household-agent",
+		async (route) => {
+			const request = route.request();
+			if (request.method() === "GET") {
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						state: "READY",
+						householdId: "household-1",
+						roomId: "room-family",
+						householdAgent: {
+							id: "agent-household",
+							displayName: "Hearth",
+							avatarPath: "/api/micasa/v1/media/hearth",
+						},
+						included,
+						canManage: true,
+						membershipRevision,
+						policyRevision: 13,
+						authorityDigest,
+						csrfToken: "csrf_" + "3".repeat(48),
+						observedAt: 1_788_278_400,
+						expiresAt: 1_788_278_520,
+					}),
+				});
+				return;
+			}
+			const body = JSON.parse(request.postData() ?? "{}");
+			expect(request.headers()["x-csrf-token"]).toBe("csrf_" + "3".repeat(48));
+			expect(body.expectedAuthorityDigest).toBe(authorityDigest);
+			expect(body.expectedMembershipRevision).toBe(membershipRevision);
+			expect(body.expectedPolicyRevision).toBe(13);
+			expect(body.idempotencyKey).toMatch(/^group-agent:/);
+			const adding = request.method() === "PUT";
+			if (adding) {
+				expect(body.policyAcknowledged).toBe(true);
+				expect(body.historyBoundaryAcknowledged).toBeUndefined();
+				addObserved = true;
+			} else {
+				expect(request.method()).toBe("DELETE");
+				expect(body.historyBoundaryAcknowledged).toBe(true);
+				expect(body.policyAcknowledged).toBeUndefined();
+				removeObserved = true;
+			}
+			included = adding;
+			membershipRevision += 1;
+			authorityDigest = adding ? "b".repeat(64) : "c".repeat(64);
+			const effect = adding
+				? "HOUSEHOLD_AGENT_ADDED"
+				: "HOUSEHOLD_AGENT_REMOVED";
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({
+					state: "VERIFIED",
+					operation: {
+						operationId: "operation:" + membershipRevision,
+						operation: adding
+							? "ADD_HOUSEHOLD_AGENT"
+							: "REMOVE_HOUSEHOLD_AGENT",
+						idempotencyKey: body.idempotencyKey,
+						auditEventId: "audit-event:" + membershipRevision,
+						effects: [
+							"ACP_ROOM_AUTHORITY_REVISED",
+							"AUDIT_EVENT_APPENDED",
+							"BOOTSTRAP_READ_MODEL_REBUILT",
+							"BUZZ_CHANNEL_MEMBERSHIP_RECONCILED",
+							effect,
+							"NOSTR_ROOM_AUTHORITY_REVISED",
+							"PA_ROOM_MEMBERSHIP_COMMITTED",
+						],
+						retrySafe: true,
+						mutationPossible: false,
+					},
+					readback: {
+						state: "READY",
+						householdId: "household-1",
+						roomId: "room-family",
+						householdAgent: {
+							id: "agent-household",
+							displayName: "Hearth",
+							avatarPath: "/api/micasa/v1/media/hearth",
+						},
+						included,
+						canManage: true,
+						membershipRevision,
+						policyRevision: 13,
+						authorityDigest,
+						csrfToken: "csrf_" + "3".repeat(48),
+						observedAt: 1_788_278_400,
+						expiresAt: 1_788_278_520,
+					},
+				}),
+			});
+		},
+	);
+
+	await page.goto("/?household=household-1&room=room-family");
+
+	const access = page.getByRole("region", {
+		name: "Household Agent group access",
+	});
+	await expect(access).toContainText("Add Hearth to this group");
+	await expect(access).toContainText(
+		"It never receives a member’s private mail, files, photos, calendar",
+	);
+	await access.getByRole("button", { name: "Add to group" }).click();
+	await expect(access).toContainText("Hearth is in this group");
+	await expect(access).toContainText(
+		"messages already shared remain in group history",
+	);
+	expect(addObserved).toBe(true);
+
+	await access.getByRole("button", { name: "Remove from group" }).click();
+	await expect(access).toContainText("Add Hearth to this group");
+	expect(removeObserved).toBe(true);
+	await expect(page.getByText("Buzz")).toHaveCount(0);
+	await expect(page.getByText(/relay|workload/i)).toHaveCount(0);
 });
