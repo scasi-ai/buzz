@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import type { ChangeEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
+import type { RoomParticipantSummary } from "@/features/micasa/contracts";
 import {
 	type MiCasaChannelSubscription,
 	type MiCasaNostrSigner,
@@ -17,10 +18,19 @@ import {
 } from "@/features/micasa/realtime";
 import { Button } from "@/shared/ui/button";
 
-function authorLabel(event: SignedNostrEvent, viewerPublicKey: string) {
-	return event.pubkey === viewerPublicKey
-		? "You"
-		: "Signed participant " + event.pubkey.slice(0, 8);
+function authorLabel(
+	event: SignedNostrEvent,
+	viewerPublicKey: string,
+	participants: readonly RoomParticipantSummary[],
+) {
+	if (event.pubkey === viewerPublicKey) return "You";
+	const participant = participants.find(
+		(item) => item.nostrPubkey === event.pubkey,
+	);
+	if (!participant) return "Unmapped signed participant";
+	return participant.kind === "HUMAN"
+		? participant.displayName
+		: participant.displayName + " · Agent";
 }
 function timestamp(createdAt: number) {
 	return new Date(createdAt * 1_000).toLocaleTimeString([], {
@@ -45,11 +55,15 @@ function mergeSignedEvent(
 export function MiCasaRoomTimeline({
 	roomId,
 	roomName,
+	participants,
 	signer,
+	viewerMemberId,
 }: {
 	roomId: string;
 	roomName: string;
+	participants: readonly RoomParticipantSummary[];
 	signer: MiCasaNostrSigner;
+	viewerMemberId: string;
 }) {
 	const queryClient = useQueryClient();
 	const [message, setMessage] = useState("");
@@ -69,6 +83,30 @@ export function MiCasaRoomTimeline({
 			}),
 		[signer],
 	);
+	const rosterCommitment = useMemo(
+		() =>
+			participants
+				.map(
+					(item) =>
+						item.subjectId + ":" + (item.nostrPubkey ?? "signer-pending"),
+				)
+				.sort()
+				.join("|"),
+		[participants],
+	);
+	const rosterPubkeys = useMemo(
+		() =>
+			new Set(
+				participants.flatMap((item) =>
+					item.nostrPubkey === null ? [] : [item.nostrPubkey],
+				),
+			),
+		[participants],
+	);
+	const roomQueryKey = useMemo(
+		() => ["micasa", "room-history", roomId, rosterCommitment] as const,
+		[roomId, rosterCommitment],
+	);
 	const publicKey = useQuery({
 		queryKey: ["micasa", "signer-public-key"],
 		queryFn: () => signer.getPublicKey(),
@@ -76,12 +114,23 @@ export function MiCasaRoomTimeline({
 		retry: false,
 	});
 	const history = useQuery({
-		queryKey: ["micasa", "room-history", roomId],
-		queryFn: () => client.queryChannelHistory(roomId, 100),
+		queryKey: roomQueryKey,
+		queryFn: async () => {
+			const viewerPublicKey = await signer.getPublicKey();
+			const allowedPubkeys = new Set(rosterPubkeys);
+			allowedPubkeys.add(viewerPublicKey);
+			const events = await client.queryChannelHistory(roomId, 100);
+			if (events.some((event) => !allowedPubkeys.has(event.pubkey))) {
+				throw new Error(
+					"Personal-Agent did not authorize a signed room participant.",
+				);
+			}
+			return events;
+		},
 		retry: false,
 	});
 	useEffect(() => {
-		if (!history.isSuccess) return;
+		if (!history.isSuccess || !publicKey.isSuccess || !publicKey.data) return;
 		let active = true;
 		let subscription: MiCasaChannelSubscription | null = null;
 		setSubscriptionState("CONNECTING");
@@ -89,8 +138,16 @@ export function MiCasaRoomTimeline({
 			.subscribeChannel(roomId, {
 				onEvent: (event) => {
 					if (!active) return;
+					if (
+						event.pubkey !== publicKey.data &&
+						!rosterPubkeys.has(event.pubkey)
+					) {
+						throw new Error(
+							"Personal-Agent did not authorize this signed participant.",
+						);
+					}
 					queryClient.setQueryData<SignedNostrEvent[]>(
-						["micasa", "room-history", roomId],
+						roomQueryKey,
 						(current) => mergeSignedEvent(current, event),
 					);
 				},
@@ -114,15 +171,24 @@ export function MiCasaRoomTimeline({
 			active = false;
 			subscription?.close();
 		};
-	}, [client, history.isSuccess, queryClient, roomId, subscriptionAttempt]);
+	}, [
+		client,
+		history.isSuccess,
+		publicKey.data,
+		publicKey.isSuccess,
+		queryClient,
+		roomId,
+		roomQueryKey,
+		rosterPubkeys,
+		subscriptionAttempt,
+	]);
 	const publish = useMutation({
 		mutationFn: (content: string) =>
 			client.publishChannelMessage(roomId, content),
 		onMutate: () => setPublishStatus("QUEUED"),
 		onSuccess: (event) => {
-			queryClient.setQueryData<SignedNostrEvent[]>(
-				["micasa", "room-history", roomId],
-				(current) => mergeSignedEvent(current, event),
+			queryClient.setQueryData<SignedNostrEvent[]>(roomQueryKey, (current) =>
+				mergeSignedEvent(current, event),
 			);
 			setMessage("");
 			setPublishStatus("PUBLISHED");
@@ -143,7 +209,17 @@ export function MiCasaRoomTimeline({
 			</section>
 		);
 	}
-	if (history.isError || publicKey.isError || !publicKey.data) {
+	if (
+		history.isError ||
+		publicKey.isError ||
+		!publicKey.data ||
+		!participants.some(
+			(item) =>
+				item.kind === "HUMAN" &&
+				item.subjectId === viewerMemberId &&
+				(item.nostrPubkey === null || item.nostrPubkey === publicKey.data),
+		)
+	) {
 		return (
 			<section className="rounded-3xl border border-slate-200 bg-white px-6 py-12 text-center">
 				<ShieldAlert
@@ -261,7 +337,7 @@ export function MiCasaRoomTimeline({
 											: "mt-1 text-xs text-slate-400"
 									}
 								>
-									{authorLabel(event, viewerPublicKey)} ·{" "}
+									{authorLabel(event, viewerPublicKey, participants)} ·{" "}
 									{timestamp(event.created_at)}
 								</p>
 							</article>

@@ -202,9 +202,11 @@ function ReadyHousehold({
 								<MiCasaSignerBoundary>
 									{(signer) => (
 										<MiCasaRoomTimeline
+											participants={activeRoom.participants}
 											roomId={activeRoom.id}
 											roomName={activeRoom.name}
 											signer={signer}
+											viewerMemberId={bootstrap.viewer.id}
 										/>
 									)}
 								</MiCasaSignerBoundary>

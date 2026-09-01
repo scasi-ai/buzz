@@ -1,5 +1,31 @@
 import { expect, test } from "@playwright/test";
 
+const viewerParticipant = {
+	subjectId: "member-1",
+	memberId: "member-1",
+	kind: "HUMAN",
+	displayName: "Alex",
+	nostrPubkey: null,
+	avatarPath: null,
+};
+const personalAgentParticipant = {
+	subjectId: "agent-personal",
+	memberId: "member-1",
+	kind: "PERSONAL_AGENT",
+	displayName: "Juniper",
+	nostrPubkey: "b".repeat(64),
+	avatarPath: null,
+};
+const householdAgentParticipant = {
+	subjectId: "agent-household",
+	memberId: null,
+	kind: "HOUSEHOLD_AGENT",
+	displayName: "Hearth",
+	nostrPubkey:
+		"989c0b76cb563971fdc9bef31ec06c3560f3249d6ee9e5d83c57625596e05f6f",
+	avatarPath: null,
+};
+
 const readyBootstrap = {
 	state: "READY",
 	viewer: {
@@ -23,11 +49,17 @@ const readyBootstrap = {
 				id: "room-household",
 				name: "Household",
 				kind: "HOUSEHOLD",
+				participants: [
+					viewerParticipant,
+					personalAgentParticipant,
+					householdAgentParticipant,
+				],
 			},
 			{
 				id: "room-agent",
 				name: "My Agent",
 				kind: "PERSONAL_AGENT",
+				participants: [viewerParticipant, personalAgentParticipant],
 			},
 		],
 		householdAgent: {
@@ -1128,6 +1160,7 @@ test("clean browser enrolls its PA-bound signer and mounts a real signed room tr
 	await expect(
 		page.getByText("Welcome home from a real signed participant"),
 	).toBeVisible();
+	await expect(page.getByText("Hearth · Agent")).toBeVisible();
 	await page.getByLabel("Message Household").fill("Hello Hearth");
 	await page.getByRole("button", { name: "Send signed message" }).click();
 	await expect(page.getByText("Hello Hearth")).toBeVisible();
