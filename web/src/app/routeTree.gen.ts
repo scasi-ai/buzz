@@ -8,7 +8,9 @@ import { Route as rootRouteImport } from "./routes/root";
 import { Route as indexRouteImport } from "./routes/index";
 import { Route as inviteDotcodeRouteImport } from "./routes/invite.$code";
 import { Route as onboardingRouteImport } from "./routes/onboarding";
+import { Route as settingsHouseholdAgentRouteImport } from "./routes/settings.household.agent";
 import { Route as settingsHouseholdMembersRouteImport } from "./routes/settings.household.members";
+import { Route as settingsUserAgentRouteImport } from "./routes/settings.user.agent";
 
 const indexRoute = indexRouteImport.update({
   id: "/",
@@ -20,12 +22,23 @@ const onboardingRoute = onboardingRouteImport.update({
   path: "/onboarding",
   getParentRoute: () => rootRouteImport,
 } as any);
+const settingsHouseholdAgentRoute =
+  settingsHouseholdAgentRouteImport.update({
+    id: "/settings/household/agent",
+    path: "/settings/household/agent",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 const settingsHouseholdMembersRoute =
   settingsHouseholdMembersRouteImport.update({
     id: "/settings/household/members",
     path: "/settings/household/members",
     getParentRoute: () => rootRouteImport,
   } as any);
+const settingsUserAgentRoute = settingsUserAgentRouteImport.update({
+  id: "/settings/user/agent",
+  path: "/settings/user/agent",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const inviteDotcodeRoute = inviteDotcodeRouteImport.update({
   id: "/invite/$code",
   path: "/invite/$code",
@@ -35,20 +48,26 @@ const inviteDotcodeRoute = inviteDotcodeRouteImport.update({
 export interface FileRoutesByFullPath {
   "/": typeof indexRoute;
   "/onboarding": typeof onboardingRoute;
+  "/settings/household/agent": typeof settingsHouseholdAgentRoute;
   "/settings/household/members": typeof settingsHouseholdMembersRoute;
+  "/settings/user/agent": typeof settingsUserAgentRoute;
   "/invite/$code": typeof inviteDotcodeRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof indexRoute;
   "/onboarding": typeof onboardingRoute;
+  "/settings/household/agent": typeof settingsHouseholdAgentRoute;
   "/settings/household/members": typeof settingsHouseholdMembersRoute;
+  "/settings/user/agent": typeof settingsUserAgentRoute;
   "/invite/$code": typeof inviteDotcodeRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   "/": typeof indexRoute;
   "/onboarding": typeof onboardingRoute;
+  "/settings/household/agent": typeof settingsHouseholdAgentRoute;
   "/settings/household/members": typeof settingsHouseholdMembersRoute;
+  "/settings/user/agent": typeof settingsUserAgentRoute;
   "/invite/$code": typeof inviteDotcodeRoute;
 }
 export interface FileRouteTypes {
@@ -56,26 +75,34 @@ export interface FileRouteTypes {
   fullPaths:
     | "/"
     | "/onboarding"
+    | "/settings/household/agent"
     | "/settings/household/members"
+    | "/settings/user/agent"
     | "/invite/$code";
   fileRoutesByTo: FileRoutesByTo;
   to:
     | "/"
     | "/onboarding"
+    | "/settings/household/agent"
     | "/settings/household/members"
+    | "/settings/user/agent"
     | "/invite/$code";
   id:
     | "__root__"
     | "/"
     | "/onboarding"
+    | "/settings/household/agent"
     | "/settings/household/members"
+    | "/settings/user/agent"
     | "/invite/$code";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
   indexRoute: typeof indexRoute;
   onboardingRoute: typeof onboardingRoute;
+  settingsHouseholdAgentRoute: typeof settingsHouseholdAgentRoute;
   settingsHouseholdMembersRoute: typeof settingsHouseholdMembersRoute;
+  settingsUserAgentRoute: typeof settingsUserAgentRoute;
   inviteDotcodeRoute: typeof inviteDotcodeRoute;
 }
 
@@ -95,11 +122,25 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof onboardingRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/settings/household/agent": {
+      id: "/settings/household/agent";
+      path: "/settings/household/agent";
+      fullPath: "/settings/household/agent";
+      preLoaderRoute: typeof settingsHouseholdAgentRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/settings/household/members": {
       id: "/settings/household/members";
       path: "/settings/household/members";
       fullPath: "/settings/household/members";
       preLoaderRoute: typeof settingsHouseholdMembersRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/settings/user/agent": {
+      id: "/settings/user/agent";
+      path: "/settings/user/agent";
+      fullPath: "/settings/user/agent";
+      preLoaderRoute: typeof settingsUserAgentRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/invite/$code": {
@@ -115,7 +156,9 @@ declare module "@tanstack/react-router" {
 const rootRouteChildren: RootRouteChildren = {
   indexRoute: indexRoute,
   onboardingRoute: onboardingRoute,
+  settingsHouseholdAgentRoute: settingsHouseholdAgentRoute,
   settingsHouseholdMembersRoute: settingsHouseholdMembersRoute,
+  settingsUserAgentRoute: settingsUserAgentRoute,
   inviteDotcodeRoute: inviteDotcodeRoute,
 };
 export const routeTree = rootRouteImport

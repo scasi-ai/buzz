@@ -99,6 +99,9 @@ test("ready Household renders only PA-authorized rooms and agents", async ({
 		"href",
 		"/settings/household/members?household=household-1",
 	);
+	await expect(
+		page.getByRole("link", { name: /User Settings/ }),
+	).toHaveAttribute("href", "/settings/user/agent?household=household-1");
 	await expect(page.getByText("Realtime readiness is enforced")).toBeVisible();
 	await expect(page.getByText(/communities\.buzz\.xyz/)).toHaveCount(0);
 	await expect(page.locator('a[href^="ws://"], a[href^="wss://"]')).toHaveCount(
@@ -596,4 +599,152 @@ test("Head of Household can suspend a member with verified lifecycle readback", 
 	await expect(
 		page.getByText("Personal-Agent verified the Household Settings change."),
 	).toBeVisible();
+});
+
+test("Household and My Agent profiles use separate verified Settings domains", async ({
+	page,
+}) => {
+	const csrfToken = "csrf_agent_profile_" + "g".repeat(32);
+	let householdMutationObserved = false;
+	function profileSnapshot(scope: "HOUSEHOLD" | "PRIVATE") {
+		return {
+			scope,
+			householdId: "household-1",
+			csrfToken,
+			profile: {
+				agentInstanceId:
+					scope === "HOUSEHOLD" ? "agent-household" : "agent-personal",
+				displayName: scope === "HOUSEHOLD" ? "Hearth" : "Juniper",
+				aliases: [],
+				avatarArtifactId: "avatar-current",
+				avatarAltText: "Current agent avatar",
+				publicBio: "",
+				profileRevision: 4,
+				characterRevision: 2,
+			},
+			availableAvatars: [
+				{
+					artifactId: "avatar-current",
+					mediaType: "image/webp",
+					altText: "Current agent avatar",
+					source: "UPLOADED",
+					contentPath: "/api/micasa/v1/media/avatar/current",
+				},
+				{
+					artifactId: "avatar-generated",
+					mediaType: "image/webp",
+					altText: "Generated agent avatar",
+					source: "GENERATED",
+					contentPath: "/api/micasa/v1/media/avatar/generated",
+				},
+			],
+		};
+	}
+
+	await page.route("**/api/micasa/v1/bootstrap**", async (route) => {
+		await route.fulfill({
+			status: 200,
+			contentType: "application/json",
+			body: JSON.stringify(readyBootstrap),
+		});
+	});
+	await page.route(
+		"**/api/micasa/v1/settings/household/agent-profile**",
+		async (route) => {
+			const before = profileSnapshot("HOUSEHOLD");
+			if (route.request().method() === "PUT") {
+				householdMutationObserved = true;
+				expect(route.request().headers()["x-csrf-token"]).toBe(csrfToken);
+				expect(route.request().postDataJSON()).toEqual({
+					expectedRevision: 4,
+					displayName: "Solace",
+					aliases: ["Home helper"],
+					avatarArtifactId: "avatar-generated",
+					avatarAltText: "Generated agent avatar",
+					publicBio: "Helps with shared plans.",
+				});
+				await route.fulfill({
+					status: 200,
+					contentType: "application/json",
+					body: JSON.stringify({
+						state: "VERIFIED",
+						operation: {
+							operationId: "operation-agent-profile",
+							idempotencyKey: "micasa-agent-profile:" + "h".repeat(64),
+							operation: "UPDATE_HOUSEHOLD_AGENT_PROFILE",
+							retrySafe: true,
+							mutationPossible: false,
+							nextAction: "REFRESH_AGENT_SETTINGS",
+							policyRevision: 9,
+							readbackAt: 2000,
+							effects: [
+								"PRESENTATION_UPDATED",
+								"TENANT_NAMES_RECONCILED",
+								"NOSTR_PROFILE_PROJECTED",
+								"ACP_PROFILE_READBACK",
+								"CACHE_INVALIDATED",
+								"IDENTITY_PRESERVED",
+								"STATE_PRESERVED",
+								"CAPABILITIES_UNCHANGED",
+							],
+						},
+						readback: {
+							...before,
+							profile: {
+								...before.profile,
+								displayName: "Solace",
+								aliases: ["Home helper"],
+								avatarArtifactId: "avatar-generated",
+								avatarAltText: "Generated agent avatar",
+								publicBio: "Helps with shared plans.",
+								profileRevision: 5,
+							},
+						},
+					}),
+				});
+				return;
+			}
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify(before),
+			});
+		},
+	);
+	await page.route(
+		"**/api/micasa/v1/settings/user/agent-profile**",
+		async (route) => {
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify(profileSnapshot("PRIVATE")),
+			});
+		},
+	);
+
+	await page.goto("/settings/household/agent");
+	await expect(
+		page.getByRole("heading", { name: "Household Agent profile" }),
+	).toBeVisible();
+	await page.getByLabel("Agent name").fill("Solace");
+	await page.getByLabel("Aliases").fill("Home helper");
+	await page.getByRole("button", { name: /Generated/ }).click();
+	await page.getByLabel("Public bio").fill("Helps with shared plans.");
+	await page.getByRole("button", { name: "Save agent profile" }).click();
+
+	await expect.poll(() => householdMutationObserved).toBe(true);
+	await expect(page.getByText(/preserved this agent's identity/)).toBeVisible();
+	await expect(
+		page.getByText("Stable agent ID · agent-household"),
+	).toBeVisible();
+
+	await page.goto("/settings/user/agent");
+	await expect(
+		page.getByRole("heading", { name: "My Agent profile" }),
+	).toBeVisible();
+	await expect(page.getByText("Private to you")).toBeVisible();
+	await expect(
+		page.getByText("Stable agent ID · agent-personal"),
+	).toBeVisible();
+	await expect(page.locator("body")).not.toContainText(/Fizz|Honey|Pollen/i);
 });

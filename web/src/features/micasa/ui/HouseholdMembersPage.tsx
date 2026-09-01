@@ -577,10 +577,21 @@ function HouseholdMembersContent({
 						Personal Agent access.
 					</p>
 				</div>
-				<span className="inline-flex items-center rounded-full bg-slate-950 px-3 py-1.5 text-xs font-medium text-white">
-					<LockKeyhole aria-hidden="true" className="mr-2 h-3.5 w-3.5" />
-					Head of Household only
-				</span>
+				<div className="flex flex-wrap items-center gap-2">
+					<a
+						className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+						href={
+							"/settings/household/agent?household=" +
+							encodeURIComponent(snapshot.householdId)
+						}
+					>
+						Household Agent
+					</a>
+					<span className="inline-flex items-center rounded-full bg-slate-950 px-3 py-1.5 text-xs font-medium text-white">
+						<LockKeyhole aria-hidden="true" className="mr-2 h-3.5 w-3.5" />
+						Head of Household only
+					</span>
+				</div>
 			</div>
 
 			<div className="mt-6 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-sm leading-6 text-indigo-900">

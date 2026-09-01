@@ -105,12 +105,20 @@ function ReadyHousehold({
 								Household Settings
 							</a>
 						)}
-						<div className="text-right">
+						<a
+							className="text-right"
+							href={
+								"/settings/user/agent?household=" +
+								encodeURIComponent(activeHousehold.id)
+							}
+						>
 							<p className="text-sm font-medium text-slate-900">
 								{bootstrap.viewer.displayName}
 							</p>
-							<p className="text-xs text-slate-500">User Settings</p>
-						</div>
+							<p className="text-xs text-slate-500 underline underline-offset-2">
+								User Settings
+							</p>
+						</a>
 					</div>
 				</div>
 			</header>
