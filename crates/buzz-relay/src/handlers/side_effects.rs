@@ -1098,6 +1098,23 @@ async fn dispatch_group_members_event(
     }
 }
 
+/// Store and commit a roster already captured behind Buzz's canonical
+/// replacement and membership locks, then fan out the committed snapshot.
+/// Operator provisioning uses this to keep its bot rows and kind:39002 event
+/// in the same database transaction.
+pub(crate) async fn commit_locked_group_members_event(
+    tenant: &TenantContext,
+    state: &Arc<AppState>,
+    channel_id: Uuid,
+    mut member_snapshot: buzz_db::channel::LockedMemberSnapshot,
+) -> anyhow::Result<()> {
+    let relay_pubkey_hex = hex::encode(state.relay_keypair.public_key().to_bytes());
+    let stored = store_group_members_event(tenant, state, channel_id, &mut member_snapshot).await?;
+    member_snapshot.release().await?;
+    dispatch_group_members_event(tenant, state, stored, &relay_pubkey_hex).await;
+    Ok(())
+}
+
 /// Emit NIP-29 group discovery events (39000, 39001, 39002) signed by the relay keypair.
 /// Called after group creation, metadata changes, or membership changes.
 /// Events are stored channel-scoped (`channel_id = Some(...)`) so that existing

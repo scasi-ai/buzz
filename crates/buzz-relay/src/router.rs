@@ -105,6 +105,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(api::operator_channels::observe_operator_channel)
                 .post(api::operator_channels::create_operator_channel),
         )
+        .route(
+            "/operator/channel-memberships",
+            get(api::operator_channels::observe_operator_channel_members)
+                .post(api::operator_channels::project_operator_channel_members),
+        )
         // Relay invites: mint (owner/admin) + claim (membership-gate exempt)
         .route("/api/invites", post(api::invites::mint_invite))
         .route("/api/join-policy", get(api::invites::join_policy))
