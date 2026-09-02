@@ -17,6 +17,11 @@ import {
   loadFounderOnboarding,
   saveFounderProfiles,
 } from "@/features/micasa/founder-onboarding";
+import type { BrowserSignerHandle } from "@/features/micasa/browser-signer-vault";
+import {
+  authorizeFounderAgents,
+  loadFounderAgentOwnerAuthorization,
+} from "@/features/micasa/founder-agent-owner-authorization";
 import { AppsReviewStage } from "@/features/micasa/ui/AppsReviewStage";
 import { MiCasaSignerBoundary } from "@/features/micasa/ui/MiCasaSignerBoundary";
 import { Button } from "@/shared/ui/button";
@@ -372,7 +377,105 @@ function FounderProfiles({
     </Frame>
   );
 }
-function FounderOnboardingAuthority() {
+function AgentOwnerAuthorizationStage({
+  signer,
+  onVerified,
+  continuing,
+}: {
+  signer: BrowserSignerHandle;
+  onVerified: () => void;
+  continuing: boolean;
+}) {
+  const authorization = useQuery({
+    queryKey: ["micasa", "founder-agent-owner-authorization"],
+    queryFn: loadFounderAgentOwnerAuthorization,
+    retry: false,
+  });
+  const mutation = useMutation({
+    mutationFn: async () => {
+      if (!authorization.data) {
+        throw new Error("Agent ownership authorization is unavailable.");
+      }
+      return authorizeFounderAgents(authorization.data, signer);
+    },
+    onSuccess: onVerified,
+  });
+  const continued = useRef(false);
+  useEffect(() => {
+    if (authorization.data?.state !== "VERIFIED" || continued.current) return;
+    continued.current = true;
+    onVerified();
+  }, [authorization.data, onVerified]);
+  if (authorization.isPending) return <Loading />;
+  if (authorization.isError || !authorization.data) {
+    return (
+      <Failure
+        pending={authorization.isFetching}
+        retry={() => void authorization.refetch()}
+      />
+    );
+  }
+  return (
+    <Frame>
+      <div className="mx-auto max-w-2xl py-6 text-center">
+        <ShieldCheck
+          aria-hidden="true"
+          className="mx-auto h-9 w-9 text-slate-700"
+        />
+        <p className="mt-5 text-sm font-semibold uppercase tracking-wider text-slate-500">
+          Final identity check
+        </p>
+        <h1 className="mt-2 text-3xl font-semibold text-slate-950">
+          Authorize your two agents
+        </h1>
+        <p className="mt-3 text-sm leading-6 text-slate-600">
+          This device will sign two narrowly scoped ownership proofs: one for
+          your Household Agent and one for My Agent. The proofs authorize only
+          their public profiles. Your private signing key stays encrypted in
+          this browser.
+        </p>
+        <div className="mt-6 grid gap-3 text-left sm:grid-cols-2">
+          <div className="rounded-2xl border border-slate-200 p-4">
+            <p className="font-medium text-slate-900">Household Agent</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Shared profile · kind=0 only
+            </p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 p-4">
+            <p className="font-medium text-slate-900">My Agent</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Personal profile · kind=0 only
+            </p>
+          </div>
+        </div>
+        {mutation.isError && (
+          <p className="mt-4 text-sm text-amber-700" role="alert">
+            {mutation.error.message} No broader signing permission was granted.
+          </p>
+        )}
+        <Button
+          className="mt-6 bg-slate-950 text-white hover:bg-slate-800"
+          disabled={mutation.isPending || continuing}
+          onClick={() => mutation.mutate()}
+        >
+          {(mutation.isPending || continuing) && (
+            <LoaderCircle
+              aria-hidden="true"
+              className="mr-2 h-4 w-4 animate-spin"
+            />
+          )}
+          Authorize profiles and continue
+        </Button>
+      </div>
+    </Frame>
+  );
+}
+
+function FounderOnboardingAuthority({
+  signer,
+}: {
+  signer: BrowserSignerHandle;
+}) {
   const queryClient = useQueryClient();
   const queryKey = ["micasa", "founder-onboarding"] as const;
   const onboarding = useQuery({
@@ -389,7 +492,9 @@ function FounderOnboardingAuthority() {
   useEffect(() => {
     if (
       !snapshot ||
-      (snapshot.state !== "PROVISIONING" && snapshot.state !== "FINALIZING")
+      (snapshot.state !== "PROVISIONING" && snapshot.state !== "FINALIZING") ||
+      snapshot.provisioningStep ===
+        "VERIFY_AUTHORITATIVE_AND_PROJECTED_READBACKS"
     ) {
       return;
     }
@@ -445,6 +550,18 @@ function FounderOnboardingAuthority() {
     );
   }
   if (snapshot.state === "FINALIZING") {
+    if (
+      snapshot.provisioningStep ===
+      "VERIFY_AUTHORITATIVE_AND_PROJECTED_READBACKS"
+    ) {
+      return (
+        <AgentOwnerAuthorizationStage
+          continuing={provision.isPending}
+          onVerified={() => provision.mutate(snapshot)}
+          signer={signer}
+        />
+      );
+    }
     return (
       <Provisioning
         error={provision.isError}
@@ -519,7 +636,7 @@ export function FounderOnboardingPage() {
         <FounderSignerShell>{content}</FounderSignerShell>
       )}
     >
-      {() => <FounderOnboardingAuthority />}
+      {(signer) => <FounderOnboardingAuthority signer={signer} />}
     </MiCasaSignerBoundary>
   );
 }

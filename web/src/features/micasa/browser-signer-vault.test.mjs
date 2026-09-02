@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
+import { schnorr } from "@noble/curves/secp256k1.js";
 import { verifyEvent } from "nostr-tools/pure";
 import {
   BrowserSignerVaultError,
@@ -107,6 +109,41 @@ test("a locked handle cannot authenticate or sign", async () => {
   signer.lock();
   await assert.rejects(signer.getPublicKey(), BrowserSignerVaultError);
   await assert.rejects(signer.signEvent(unsigned()), BrowserSignerVaultError);
+  await assert.rejects(
+    signer.signAgentAuthorization("a".repeat(64), "kind=0"),
+    BrowserSignerVaultError,
+  );
+});
+
+test("signs only the fixed NIP-OA kind=0 Agent authorization", async () => {
+  const store = new MemoryStore();
+  const signer = await createBrowserSigner("binding-one", store);
+  const ownerPublicKey = await signer.getPublicKey();
+  const agentPublicKey = "a".repeat(64);
+  const signature = await signer.signAgentAuthorization(
+    agentPublicKey,
+    "kind=0",
+  );
+  const digest = createHash("sha256")
+    .update(`nostr:agent-auth:${agentPublicKey}:kind=0`, "utf8")
+    .digest();
+  assert.match(signature, /^[0-9a-f]{128}$/);
+  assert.equal(
+    schnorr.verify(
+      Buffer.from(signature, "hex"),
+      digest,
+      Buffer.from(ownerPublicKey, "hex"),
+    ),
+    true,
+  );
+  await assert.rejects(
+    signer.signAgentAuthorization("bad", "kind=0"),
+    BrowserSignerVaultError,
+  );
+  await assert.rejects(
+    signer.signAgentAuthorization(agentPublicKey, "kind=1"),
+    BrowserSignerVaultError,
+  );
 });
 
 test("ciphertext or binding tampering fails closed", async () => {

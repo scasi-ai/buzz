@@ -18,6 +18,7 @@
     "test": "node --experimental-strip-types --test \"src/**/*.test.mjs\" \"src/**/*.test.ts\""
   },
   "dependencies": {
+    "@noble/curves": "^2.0.1",
     "@fontsource-variable/inter": "^5.2.8",
     "@isomorphic-git/lightning-fs": "^4.6.2",
     "@radix-ui/react-slot": "^1.2.4",

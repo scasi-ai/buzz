@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { schnorr } from "@noble/curves/secp256k1.js";
 import { expect, test, type Page } from "@playwright/test";
 
 async function routeFounderSigner(page: Page) {
@@ -74,6 +76,7 @@ async function routeFounderSigner(page: Page) {
       ),
     });
   });
+  return () => enrolledPublicKey;
 }
 
 async function enrollFounderSigner(page: Page) {
@@ -585,6 +588,135 @@ test("founder onboarding captures named agents without a Buzz community step", a
   await expect(page.locator("body")).not.toContainText(
     /Buzz|community|relay|Fizz|Honey|Pollen/i,
   );
+});
+
+test("founder explicitly authorizes both exact Agent profiles before final readback", async ({
+  page,
+}) => {
+  const currentOwnerPublicKey = await routeFounderSigner(page);
+  const csrfToken = `csrf_${"a".repeat(40)}`;
+  const householdPublicKey = "2".repeat(64);
+  const personalPublicKey = "3".repeat(64);
+  let authorizationObserved = false;
+  let provisionObserved = false;
+
+  await page.route("**/api/micasa/v1/onboarding**", async (route) => {
+    if (route.request().method() === "POST") {
+      provisionObserved = true;
+      expect(route.request().headers()["x-csrf-token"]).toBe(csrfToken);
+      expect(route.request().postDataJSON()).toEqual({ expectedRevision: 8 });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          state: "READY",
+          profileRevision: 8,
+          completedSteps: [
+            "PROFILES",
+            "PROVISIONING",
+            "HOUSEHOLD_APPS",
+            "PRIVATE_APPS",
+          ],
+          csrfToken,
+          generatedAvatars: null,
+          provisioningStep: null,
+          destinationPath: "/household",
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        state: "FINALIZING",
+        profileRevision: 8,
+        completedSteps: [
+          "PROFILES",
+          "PROVISIONING",
+          "HOUSEHOLD_APPS",
+          "PRIVATE_APPS",
+        ],
+        csrfToken,
+        generatedAvatars: null,
+        provisioningStep: "VERIFY_AUTHORITATIVE_AND_PROJECTED_READBACKS",
+      }),
+    });
+  });
+  await page.route(
+    "**/api/micasa/v1/onboarding/agent-owner-authorization",
+    async (route) => {
+      const ownerPublicKey = currentOwnerPublicKey();
+      if (!ownerPublicKey) throw new Error("Founder signer is not enrolled.");
+      expect(ownerPublicKey).toMatch(/^[0-9a-f]{64}$/);
+      if (route.request().method() === "POST") {
+        authorizationObserved = true;
+        expect(route.request().headers()["x-csrf-token"]).toBe(csrfToken);
+        const payload = route.request().postDataJSON();
+        expect(Object.keys(payload).sort()).toEqual([
+          "expectedAuthorizationRevision",
+          "householdSignature",
+          "personalSignature",
+        ]);
+        expect(payload.expectedAuthorizationRevision).toBe(1);
+        for (const [agentPublicKey, signature] of [
+          [householdPublicKey, payload.householdSignature],
+          [personalPublicKey, payload.personalSignature],
+        ]) {
+          const digest = createHash("sha256")
+            .update(`nostr:agent-auth:${agentPublicKey}:kind=0`, "utf8")
+            .digest();
+          expect(
+            schnorr.verify(
+              Buffer.from(signature, "hex"),
+              digest,
+              Buffer.from(ownerPublicKey, "hex"),
+            ),
+          ).toBe(true);
+        }
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          state:
+            route.request().method() === "POST"
+              ? "VERIFIED"
+              : "AUTHORIZATION_REQUIRED",
+          authorizationRevision: route.request().method() === "POST" ? 2 : 1,
+          ownerPublicKey,
+          conditions: "kind=0",
+          agents: {
+            household: {
+              role: "HOUSEHOLD_AGENT",
+              publicKey: householdPublicKey,
+            },
+            personal: {
+              role: "PERSONAL_AGENT",
+              publicKey: personalPublicKey,
+            },
+          },
+          csrfToken,
+        }),
+      });
+    },
+  );
+
+  await page.goto("/onboarding");
+  await enrollFounderSigner(page);
+  await expect(
+    page.getByRole("heading", { name: "Authorize your two agents" }),
+  ).toBeVisible();
+  await expect(page.getByText("Shared profile · kind=0 only")).toBeVisible();
+  await expect(page.getByText("Personal profile · kind=0 only")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Authorize profiles and continue" })
+    .click();
+  await expect.poll(() => authorizationObserved).toBe(true);
+  await expect.poll(() => provisionObserved).toBe(true);
+  await expect(
+    page.getByRole("heading", { name: "Your Household is ready" }),
+  ).toBeVisible();
 });
 
 test("invited member chooses their own profile and Personal Agent before Buzz activation", async ({

@@ -301,6 +301,9 @@ importers:
 
   web:
     dependencies:
+      '@noble/curves':
+        specifier: ^2.0.1
+        version: 2.0.1
       '@fontsource-variable/inter':
         specifier: ^5.2.8
         version: 5.2.8

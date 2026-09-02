@@ -4,6 +4,7 @@ import {
   getPublicKey,
   verifyEvent,
 } from "nostr-tools/pure";
+import { schnorr } from "@noble/curves/secp256k1.js";
 import type {
   MiCasaNostrSigner,
   SignedNostrEvent,
@@ -34,6 +35,10 @@ export type BrowserSignerVaultStore = {
 export type BrowserSignerHandle = MiCasaNostrSigner & {
   readonly bindingId: string;
   readonly publicKey: string;
+  signAgentAuthorization(
+    agentPublicKey: string,
+    conditions: "kind=0",
+  ): Promise<string>;
   lock(): void;
 };
 
@@ -73,6 +78,13 @@ function copyBuffer(value: ArrayBuffer | ArrayBufferView): ArrayBuffer {
       : new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
   return bytes.slice().buffer;
 }
+function hexBytes(value: string): Uint8Array {
+  const result = new Uint8Array(value.length / 2);
+  for (let index = 0; index < result.length; index += 1) {
+    result[index] = Number.parseInt(value.slice(index * 2, index * 2 + 2), 16);
+  }
+  return result;
+}
 function validateRecord(
   value: BrowserSignerVaultRecord,
   bindingId: string,
@@ -103,6 +115,7 @@ function handle(
   bindingId: string,
   publicKey: string,
   secretSource: Uint8Array,
+  provider?: Crypto,
 ): BrowserSignerHandle {
   const secret = secretSource.slice();
   secretSource.fill(0);
@@ -124,6 +137,31 @@ function handle(
         fail("The browser signer could not verify its signature.");
       }
       return signed;
+    },
+    async signAgentAuthorization(agentPublicKey, conditions) {
+      if (!HEX64.test(agentPublicKey) || conditions !== "kind=0") {
+        fail("The Agent ownership authorization is invalid.");
+      }
+      const digest = new Uint8Array(
+        await cryptoProvider(provider).subtle.digest(
+          "SHA-256",
+          new TextEncoder().encode(
+            `nostr:agent-auth:${agentPublicKey}:${conditions}`,
+          ),
+        ),
+      );
+      let signature: Uint8Array;
+      try {
+        signature = schnorr.sign(digest, requireSecret());
+      } catch {
+        fail("The Agent ownership authorization could not be signed.");
+      }
+      if (!schnorr.verify(signature, digest, hexBytes(publicKey))) {
+        fail("The Agent ownership authorization could not be verified.");
+      }
+      return Array.from(signature, (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join("");
     },
     lock() {
       if (!locked) secret.fill(0);
@@ -249,7 +287,7 @@ export async function createBrowserSigner(
     secret.fill(0);
     fail("The encrypted browser signer could not be stored.");
   }
-  return handle(checkedBinding, publicKey, secret);
+  return handle(checkedBinding, publicKey, secret, provider);
 }
 
 export async function unlockBrowserSigner(
@@ -294,7 +332,7 @@ export async function unlockBrowserSigner(
     secret.fill(0);
     fail("The encrypted browser signer does not match Personal-Agent.");
   }
-  return handle(checkedBinding, expectedPublicKey, secret);
+  return handle(checkedBinding, expectedPublicKey, secret, provider);
 }
 
 export async function removeBrowserSignerAfterRevocation(

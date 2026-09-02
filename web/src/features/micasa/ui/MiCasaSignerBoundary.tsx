@@ -13,7 +13,6 @@ import {
   createBrowserSigner,
   unlockBrowserSigner,
 } from "@/features/micasa/browser-signer-vault";
-import type { MiCasaNostrSigner } from "@/features/micasa/realtime";
 import {
   enrollMiCasaSigner,
   loadMiCasaSigner,
@@ -154,7 +153,7 @@ export function MiCasaSignerBoundary({
   children,
   renderUnavailable,
 }: {
-  children: (signer: MiCasaNostrSigner) => ReactNode;
+  children: (signer: BrowserSignerHandle) => ReactNode;
   renderUnavailable?: (content: ReactNode) => ReactNode;
 }) {
   const signerAuthority = useQuery({
