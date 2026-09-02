@@ -20,6 +20,28 @@ export type FounderOnboardingStep =
   | "PROVISIONING"
   | "HOUSEHOLD_APPS"
   | "PRIVATE_APPS";
+export type FounderProvisioningStep =
+  | "CREATE_PA_HOUSEHOLD_TENANT"
+  | "ESTABLISH_HEAD_MEMBERSHIP"
+  | "BIND_HEAD_ACCOUNT_AND_NOSTR_IDENTITY"
+  | "PERSIST_PRESENTATION_PROFILES_AND_AVATARS"
+  | "CREATE_BUILDERLAB_BUZZ_COMMUNITY"
+  | "VERIFY_ONE_TO_ONE_COMMUNITY_MAPPING"
+  | "CREATE_PA_DEFINED_ROOMS"
+  | "PROJECT_AUTHORIZED_BUZZ_CHANNELS"
+  | "CREATE_DISTINCT_NOSTR_IDENTITIES"
+  | "PROVISION_HOUSEHOLD_AGENT"
+  | "PROVISION_HEAD_PERSONAL_AGENT"
+  | "CREATE_REQUIRED_HOUSEHOLD_AND_PERSONAL_ROOMS"
+  | "DERIVE_HUMAN_AND_AGENT_ROSTERS"
+  | "START_CHANNEL_SCOPED_ACP_WORKLOADS"
+  | "APPLY_MEMBERSHIPS_AND_ACP_ALLOWLISTS"
+  | "ISSUE_VERSIONED_CONSUMER_APPS_CATALOG"
+  | "PERSIST_HOUSEHOLD_APPS_DECISIONS"
+  | "PERSIST_PRIVATE_APPS_DECISIONS"
+  | "VERIFY_NO_UNCONSENTED_PROVIDER_GRANTS"
+  | "VERIFY_AUTHORITATIVE_AND_PROJECTED_READBACKS"
+  | "ISSUE_WORKSPACE_DESTINATION";
 export type GeneratedAvatar = {
   artifactId: string;
   mediaType: "image/jpeg" | "image/png" | "image/webp";
@@ -30,6 +52,7 @@ export type FounderOnboardingSnapshot = {
   profileRevision: number;
   completedSteps: FounderOnboardingStep[];
   csrfToken: string;
+  provisioningStep: FounderProvisioningStep | null;
   generatedAvatars: {
     householdAgent: GeneratedAvatar;
     personalAgent: GeneratedAvatar;
@@ -86,6 +109,7 @@ export type FounderProfileMutation = {
 type JsonObject = Record<string, unknown>;
 const API_PREFIX = "/api/micasa/v1";
 const ONBOARDING_PATH = `${API_PREFIX}/onboarding`;
+const PROVISION_PATH = `${ONBOARDING_PATH}/provision`;
 const REQUEST_TIMEOUT_MS = 15_000;
 const PUBLIC_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 const CSRF = /^[A-Za-z0-9_-]{32,256}$/;
@@ -96,6 +120,29 @@ const STEPS = [
   "PROVISIONING",
   "HOUSEHOLD_APPS",
   "PRIVATE_APPS",
+] as const;
+const PROVISIONING_STEPS = [
+  "CREATE_PA_HOUSEHOLD_TENANT",
+  "ESTABLISH_HEAD_MEMBERSHIP",
+  "BIND_HEAD_ACCOUNT_AND_NOSTR_IDENTITY",
+  "PERSIST_PRESENTATION_PROFILES_AND_AVATARS",
+  "CREATE_BUILDERLAB_BUZZ_COMMUNITY",
+  "VERIFY_ONE_TO_ONE_COMMUNITY_MAPPING",
+  "CREATE_PA_DEFINED_ROOMS",
+  "PROJECT_AUTHORIZED_BUZZ_CHANNELS",
+  "CREATE_DISTINCT_NOSTR_IDENTITIES",
+  "PROVISION_HOUSEHOLD_AGENT",
+  "PROVISION_HEAD_PERSONAL_AGENT",
+  "CREATE_REQUIRED_HOUSEHOLD_AND_PERSONAL_ROOMS",
+  "DERIVE_HUMAN_AND_AGENT_ROSTERS",
+  "START_CHANNEL_SCOPED_ACP_WORKLOADS",
+  "APPLY_MEMBERSHIPS_AND_ACP_ALLOWLISTS",
+  "ISSUE_VERSIONED_CONSUMER_APPS_CATALOG",
+  "PERSIST_HOUSEHOLD_APPS_DECISIONS",
+  "PERSIST_PRIVATE_APPS_DECISIONS",
+  "VERIFY_NO_UNCONSENTED_PROVIDER_GRANTS",
+  "VERIFY_AUTHORITATIVE_AND_PROJECTED_READBACKS",
+  "ISSUE_WORKSPACE_DESTINATION",
 ] as const;
 
 function object(value: unknown, label: string): JsonObject {
@@ -247,6 +294,7 @@ export function parseFounderOnboarding(
     "completedSteps",
     "csrfToken",
     "generatedAvatars",
+    "provisioningStep",
   ];
   if (state === "BLOCKED") keys.push("blockedCode");
   if (state === "READY") keys.push("destinationPath");
@@ -258,6 +306,30 @@ export function parseFounderOnboarding(
     );
   }
   const completedSteps = parseSteps(record.completedSteps);
+  const provisioningStep =
+    record.provisioningStep === null
+      ? null
+      : typeof record.provisioningStep === "string" &&
+          PROVISIONING_STEPS.includes(
+            record.provisioningStep as FounderProvisioningStep,
+          )
+        ? (record.provisioningStep as FounderProvisioningStep)
+        : (() => {
+            throw new FounderOnboardingContractError(
+              "onboarding.provisioningStep is invalid.",
+            );
+          })();
+  if (
+    ((state === "PROFILE_REQUIRED" || state === "READY") &&
+      provisioningStep !== null) ||
+    (state !== "PROFILE_REQUIRED" &&
+      state !== "READY" &&
+      provisioningStep === null)
+  ) {
+    throw new FounderOnboardingContractError(
+      "onboarding.provisioningStep contradicts its state.",
+    );
+  }
   const prefix = expectedPrefix(state);
   if (
     prefix !== null &&
@@ -310,6 +382,7 @@ export function parseFounderOnboarding(
     profileRevision: positiveInteger(record, "profileRevision", "onboarding"),
     completedSteps,
     csrfToken,
+    provisioningStep,
     generatedAvatars,
   };
   if (state === "BLOCKED") {
@@ -581,6 +654,23 @@ async function requestJson<T>(
 }
 export function loadFounderOnboarding(): Promise<FounderOnboardingSnapshot> {
   return requestJson(ONBOARDING_PATH, parseFounderOnboarding);
+}
+export function advanceFounderProvisioning(
+  snapshot: FounderOnboardingSnapshot,
+): Promise<FounderOnboardingSnapshot> {
+  if (snapshot.state === "PROFILE_REQUIRED") {
+    throw new FounderOnboardingContractError(
+      "Founder profiles must be saved before provisioning.",
+    );
+  }
+  return requestJson(PROVISION_PATH, parseFounderOnboarding, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": snapshot.csrfToken,
+    },
+    body: JSON.stringify({ expectedRevision: snapshot.profileRevision }),
+  });
 }
 export function saveFounderProfiles(
   selection: FounderProfileSelection,

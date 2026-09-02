@@ -404,13 +404,32 @@ test("founder onboarding captures named agents without a Buzz community step", a
   page,
 }) => {
   let mutationObserved = false;
+  let profilesSaved = false;
   const csrfToken = `csrf_${"a".repeat(40)}`;
 
   await routeFounderSigner(page);
 
   await page.route("**/api/micasa/v1/onboarding**", async (route) => {
+    if (route.request().method() === "POST") {
+      expect(route.request().headers()["x-csrf-token"]).toBe(csrfToken);
+      expect(route.request().postDataJSON()).toEqual({ expectedRevision: 8 });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          state: "PROVISIONING",
+          profileRevision: 8,
+          completedSteps: ["PROFILES"],
+          csrfToken,
+          generatedAvatars: null,
+          provisioningStep: "CREATE_PA_HOUSEHOLD_TENANT",
+        }),
+      });
+      return;
+    }
     if (route.request().method() === "PUT") {
       mutationObserved = true;
+      profilesSaved = true;
       expect(route.request().headers()["x-csrf-token"]).toBe(csrfToken);
       expect(route.request().postDataJSON()).toEqual({
         expectedRevision: 7,
@@ -463,6 +482,21 @@ test("founder onboarding captures named agents without a Buzz community step", a
       });
       return;
     }
+    if (profilesSaved) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          state: "PROVISIONING",
+          profileRevision: 8,
+          completedSteps: ["PROFILES"],
+          csrfToken,
+          generatedAvatars: null,
+          provisioningStep: "CREATE_PA_HOUSEHOLD_TENANT",
+        }),
+      });
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -471,6 +505,7 @@ test("founder onboarding captures named agents without a Buzz community step", a
         profileRevision: 7,
         completedSteps: [],
         csrfToken,
+        provisioningStep: null,
         generatedAvatars: {
           householdAgent: {
             artifactId: "avatar:household-generated",
@@ -615,6 +650,7 @@ test("Household Apps review persists a decision for every applicable card", asyn
         completedSteps: ["PROFILES", "PROVISIONING"],
         csrfToken: founderCsrf,
         generatedAvatars: null,
+        provisioningStep: "PERSIST_HOUSEHOLD_APPS_DECISIONS",
       }),
     });
   });

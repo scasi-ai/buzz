@@ -14,6 +14,7 @@ function profileSnapshot() {
     profileRevision: 7,
     completedSteps: [],
     csrfToken,
+    provisioningStep: null,
     generatedAvatars: {
       householdAgent: {
         artifactId: "avatar:household-generated",
@@ -48,9 +49,36 @@ test("accepts the resumable final-readback phase without a destination", () => {
     ],
     csrfToken,
     generatedAvatars: null,
+    provisioningStep: "VERIFY_AUTHORITATIVE_AND_PROJECTED_READBACKS",
   });
   assert.equal(parsed.state, "FINALIZING");
   assert.equal(parsed.destinationPath, undefined);
+});
+test("requires an exact current provisioning step outside profile and ready states", () => {
+  const value = {
+    state: "PROVISIONING",
+    profileRevision: 8,
+    completedSteps: ["PROFILES"],
+    csrfToken,
+    generatedAvatars: null,
+    provisioningStep: "CREATE_PA_HOUSEHOLD_TENANT",
+  };
+  assert.equal(
+    parseFounderOnboarding(value).provisioningStep,
+    "CREATE_PA_HOUSEHOLD_TENANT",
+  );
+  assert.throws(
+    () => parseFounderOnboarding({ ...value, provisioningStep: null }),
+    FounderOnboardingContractError,
+  );
+  assert.throws(
+    () =>
+      parseFounderOnboarding({
+        ...profileSnapshot(),
+        provisioningStep: "CREATE_PA_HOUSEHOLD_TENANT",
+      }),
+    FounderOnboardingContractError,
+  );
 });
 test("refuses transport fields in the browser projection", () => {
   assert.throws(

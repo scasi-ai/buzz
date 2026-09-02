@@ -1,6 +1,6 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { FormEvent, ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Bot,
   CheckCircle2,
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import {
   type FounderOnboardingSnapshot,
+  advanceFounderProvisioning,
   loadFounderOnboarding,
   saveFounderProfiles,
 } from "@/features/micasa/founder-onboarding";
@@ -132,10 +133,14 @@ function AvatarChoice({
   );
 }
 function Provisioning({
-  readbackName,
+  step,
+  error,
+  retry,
   finalizing = false,
 }: {
-  readbackName?: string;
+  step: FounderOnboardingSnapshot["provisioningStep"];
+  error: boolean;
+  retry: () => void;
   finalizing?: boolean;
 }) {
   return (
@@ -157,17 +162,27 @@ function Provisioning({
             </>
           ) : (
             <>
-              Personal-Agent verified your profile choices
-              {readbackName ? ` for ${readbackName}` : ""}. It is now creating
+              Personal-Agent verified your profile choices. It is now creating
               the Household, agent identities, rooms, realtime authorization,
               and ACP workloads.
             </>
           )}{" "}
           Refreshing resumes this operation rather than starting it again.
         </p>
+        {step && (
+          <p className="mt-3 text-xs font-medium text-slate-500">
+            Current verified step: {step.replaceAll("_", " ").toLowerCase()}
+          </p>
+        )}
+        {error && (
+          <p className="mt-4 text-sm text-amber-700" role="alert">
+            Personal-Agent paused before retrying. Your verified progress is
+            saved.
+          </p>
+        )}
         <Button
           className="mt-6 gap-2 bg-slate-950 text-white hover:bg-slate-800"
-          onClick={() => window.location.reload()}
+          onClick={retry}
         >
           <RefreshCw aria-hidden="true" className="h-4 w-4" />
           Check progress
@@ -178,8 +193,10 @@ function Provisioning({
 }
 function FounderProfiles({
   snapshot,
+  onSaved,
 }: {
   snapshot: FounderOnboardingSnapshot;
+  onSaved: () => void;
 }) {
   const avatars = snapshot.generatedAvatars;
   const [householdName, setHouseholdName] = useState("");
@@ -214,10 +231,8 @@ function FounderProfiles({
         snapshot,
       );
     },
+    onSuccess: onSaved,
   });
-  if (mutation.data) {
-    return <Provisioning readbackName={mutation.data.readback.householdName} />;
-  }
   if (avatars === null) {
     return <Failure pending={false} retry={() => window.location.reload()} />;
   }
@@ -358,11 +373,32 @@ function FounderProfiles({
   );
 }
 function FounderOnboardingAuthority() {
+  const queryClient = useQueryClient();
+  const queryKey = ["micasa", "founder-onboarding"] as const;
   const onboarding = useQuery({
-    queryKey: ["micasa", "founder-onboarding"],
+    queryKey,
     queryFn: loadFounderOnboarding,
     retry: false,
   });
+  const provision = useMutation({
+    mutationFn: advanceFounderProvisioning,
+    onSuccess: (snapshot) => queryClient.setQueryData(queryKey, snapshot),
+  });
+  const snapshot = onboarding.data;
+  const autoAttempt = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      !snapshot ||
+      (snapshot.state !== "PROVISIONING" && snapshot.state !== "FINALIZING")
+    ) {
+      return;
+    }
+    const key = `${snapshot.state}:${snapshot.provisioningStep}`;
+    if (autoAttempt.current === key) return;
+    autoAttempt.current = key;
+    const timeout = window.setTimeout(() => provision.mutate(snapshot), 350);
+    return () => window.clearTimeout(timeout);
+  }, [snapshot, provision.mutate]);
   if (onboarding.isPending) return <Loading />;
   if (onboarding.isError) {
     return (
@@ -372,19 +408,51 @@ function FounderOnboardingAuthority() {
       />
     );
   }
-  const snapshot = onboarding.data;
+  if (!snapshot) return <Loading />;
   if (snapshot.state === "PROFILE_REQUIRED") {
-    return <FounderProfiles snapshot={snapshot} />;
+    return (
+      <FounderProfiles
+        onSaved={() => void onboarding.refetch()}
+        snapshot={snapshot}
+      />
+    );
   }
-  if (snapshot.state === "PROVISIONING") return <Provisioning />;
+  if (snapshot.state === "PROVISIONING") {
+    return (
+      <Provisioning
+        error={provision.isError}
+        retry={() => provision.mutate(snapshot)}
+        step={snapshot.provisioningStep}
+      />
+    );
+  }
   if (snapshot.state === "HOUSEHOLD_APPS_REQUIRED") {
-    return <AppsReviewStage tier="HOUSEHOLD" />;
+    return (
+      <AppsReviewStage
+        continuing={provision.isPending}
+        onContinue={() => provision.mutate(snapshot)}
+        tier="HOUSEHOLD"
+      />
+    );
   }
   if (snapshot.state === "PRIVATE_APPS_REQUIRED") {
-    return <AppsReviewStage tier="PRIVATE" />;
+    return (
+      <AppsReviewStage
+        continuing={provision.isPending}
+        onContinue={() => provision.mutate(snapshot)}
+        tier="PRIVATE"
+      />
+    );
   }
   if (snapshot.state === "FINALIZING") {
-    return <Provisioning finalizing />;
+    return (
+      <Provisioning
+        error={provision.isError}
+        finalizing
+        retry={() => provision.mutate(snapshot)}
+        step={snapshot.provisioningStep}
+      />
+    );
   }
   if (snapshot.state === "READY") {
     return (
@@ -423,7 +491,7 @@ function FounderOnboardingAuthority() {
         </p>
         <Button
           className="mt-6 gap-2 bg-slate-950 text-white hover:bg-slate-800"
-          onClick={() => void onboarding.refetch()}
+          onClick={() => provision.mutate(snapshot)}
         >
           <RefreshCw aria-hidden="true" className="h-4 w-4" />
           Recheck setup

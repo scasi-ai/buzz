@@ -78,7 +78,15 @@ function Shell({ children }: { children: ReactNode }) {
     </main>
   );
 }
-function Completed({ tier }: { tier: AppsTier }) {
+function Completed({
+  tier,
+  onContinue,
+  continuing,
+}: {
+  tier: AppsTier;
+  onContinue?: () => void;
+  continuing: boolean;
+}) {
   return (
     <Shell>
       <div className="mx-auto max-w-xl py-12 text-center">
@@ -97,9 +105,10 @@ function Completed({ tier }: { tier: AppsTier }) {
         </p>
         <Button
           className="mt-6 bg-slate-950 text-white hover:bg-slate-800"
-          onClick={() => window.location.reload()}
+          disabled={continuing}
+          onClick={onContinue ?? (() => window.location.reload())}
         >
-          Continue setup
+          {continuing ? "Continuing…" : "Continue setup"}
         </Button>
       </div>
     </Shell>
@@ -175,7 +184,15 @@ function Card({
   );
 }
 
-export function AppsReviewStage({ tier }: { tier: AppsTier }) {
+export function AppsReviewStage({
+  tier,
+  onContinue,
+  continuing = false,
+}: {
+  tier: AppsTier;
+  onContinue?: () => void;
+  continuing?: boolean;
+}) {
   const review = useQuery({
     queryKey: ["micasa", "apps-review", tier],
     queryFn: () => loadAppsReview(tier),
@@ -266,7 +283,9 @@ export function AppsReviewStage({ tier }: { tier: AppsTier }) {
     );
   }
   if (mutation.data || review.data.state === "REVIEWED") {
-    return <Completed tier={tier} />;
+    return (
+      <Completed continuing={continuing} onContinue={onContinue} tier={tier} />
+    );
   }
 
   const remaining = review.data.cards.filter(
