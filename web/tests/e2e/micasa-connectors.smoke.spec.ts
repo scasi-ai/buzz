@@ -85,7 +85,7 @@ function appsSettings() {
     householdId: tenant,
     catalogVersion: "1.0.0",
     catalogDigest: "f".repeat(64),
-    catalogTotalCards: 83,
+    catalogTotalCards: 92,
     applicableCardCount: 1,
     decisionRevision: 4,
     csrfToken,
@@ -108,7 +108,8 @@ function appsSettings() {
         consentReceiptId: null,
         audience: ["HOUSEHOLD"],
         selectedResourceIds: [],
-        details: "Select exact calendars in a separate authorization flow.",
+        details:
+          "Google OAuth Calendar API or reviewed Google MCP; select exact calendars in a separate authorization flow.",
       },
     ],
   };
@@ -133,6 +134,40 @@ async function installSettingsRoutes(page) {
     },
   );
 }
+
+test("connector finder searches by service and OAuth or MCP route", async ({
+  page,
+}) => {
+  await installSettingsRoutes(page);
+  await page.goto(returnPath);
+
+  const search = page.getByRole("searchbox", {
+    name: "Search services to connect",
+  });
+  await search.fill("hosted mcp");
+  await expect(
+    page.getByRole("heading", { name: "Google Calendar", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Showing 1 of 1 cards")).toBeVisible();
+
+  await search.fill("direct provider api");
+  await expect(
+    page.getByRole("heading", { name: "Google Calendar", exact: true }),
+  ).toBeVisible();
+
+  await search.fill("OAuth");
+  await expect(
+    page.getByRole("heading", { name: "Google Calendar", exact: true }),
+  ).toBeVisible();
+
+  await search.fill("Dropbox");
+  await expect(page.getByText("No services found")).toBeVisible();
+  await page.getByRole("button", { name: "Clear search" }).click();
+  await expect(search).toHaveValue("");
+  await expect(
+    page.getByRole("heading", { name: "Google Calendar", exact: true }),
+  ).toBeVisible();
+});
 
 test("Google Calendar setup starts through the PA BFF and stores only an opaque resume reference", async ({
   page,

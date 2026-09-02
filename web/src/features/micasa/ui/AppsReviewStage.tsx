@@ -14,9 +14,12 @@ import {
   type AppsReviewCard,
   type AppsTier,
   defaultReviewDecision,
+  isGoogleWorkspaceService,
   loadAppsReview,
+  matchesAppsServiceSearch,
   saveAppsReview,
 } from "@/features/micasa/apps-onboarding";
+import { GoogleWorkspacePlanner } from "@/features/micasa/ui/GoogleWorkspacePlanner";
 import { Button } from "@/shared/ui/button";
 
 const categoryLabels: Record<AppsCategory, string> = {
@@ -179,6 +182,7 @@ export function AppsReviewStage({ tier }: { tier: AppsTier }) {
     retry: false,
   });
   const [search, setSearch] = useState("");
+  const [googleOnly, setGoogleOnly] = useState(false);
   const [decisions, setDecisions] = useState<Record<string, AppsDecision>>({});
   useEffect(() => {
     if (review.data) {
@@ -197,14 +201,18 @@ export function AppsReviewStage({ tier }: { tier: AppsTier }) {
   });
 
   const filtered = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase();
-    if (!review.data || !query) return review.data?.cards ?? [];
-    return review.data.cards.filter(
-      (card) =>
-        card.displayName.toLocaleLowerCase().includes(query) ||
-        categoryLabels[card.category].toLocaleLowerCase().includes(query),
+    if (!review.data) return [];
+    const providerCards = googleOnly
+      ? review.data.cards.filter(isGoogleWorkspaceService)
+      : review.data.cards;
+    return providerCards.filter((card) =>
+      matchesAppsServiceSearch(card, search, [
+        categoryLabels[card.category],
+        statusLabels[card.catalogStatus],
+        placementLabels[card.placement],
+      ]),
     );
-  }, [review.data, search]);
+  }, [googleOnly, review.data, search]);
   const grouped = useMemo(
     () =>
       Object.entries(categoryLabels)
@@ -287,17 +295,24 @@ export function AppsReviewStage({ tier }: { tier: AppsTier }) {
         device-gated, coming later, or blocked. Reviewing is required;
         connecting an optional provider is not.
       </p>
+      <GoogleWorkspacePlanner
+        active={googleOnly}
+        onToggle={() => setGoogleOnly((current) => !current)}
+        serviceCount={review.data.cards.filter(isGoogleWorkspaceService).length}
+        tier={tier}
+      />
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
         <label className="relative flex-1">
           <Search
             aria-hidden="true"
             className="absolute left-3 top-3 h-4 w-4 text-slate-400"
           />
-          <span className="sr-only">Search all apps</span>
+          <span className="sr-only">Search services to connect</span>
           <input
             className="h-10 w-full rounded-xl border border-slate-300 pl-9 pr-3 text-sm outline-none focus:border-slate-600"
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search all apps"
+            placeholder="Search services to connect — Google, OAuth, MCP…"
+            type="search"
             value={search}
           />
         </label>
@@ -313,6 +328,9 @@ export function AppsReviewStage({ tier }: { tier: AppsTier }) {
         {remaining === 0
           ? "Every applicable card has a decision."
           : `${remaining} cards still need a decision.`}
+      </p>
+      <p className="mt-1 text-xs text-slate-500">
+        Showing {filtered.length} of {review.data.applicableCardCount} services
       </p>
 
       <div className="mt-7 space-y-8">
@@ -348,6 +366,28 @@ export function AppsReviewStage({ tier }: { tier: AppsTier }) {
           </section>
         ))}
       </div>
+
+      {filtered.length === 0 && (
+        <div
+          className="mt-7 rounded-2xl border border-dashed border-slate-300 px-5 py-10 text-center"
+          role="status"
+        >
+          <p className="font-medium text-slate-800">No services found</p>
+          <p className="mt-1 text-sm text-slate-500">
+            Try a provider name, OAuth, MCP, category, or availability status.
+          </p>
+          <Button
+            className="mt-4 border border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
+            onClick={() => {
+              setSearch("");
+              setGoogleOnly(false);
+            }}
+            type="button"
+          >
+            Clear search
+          </Button>
+        </div>
+      )}
 
       {mutation.isError && (
         <p

@@ -69,7 +69,7 @@ function snapshot(tier = "HOUSEHOLD", overrides = {}) {
     householdId: "household-one",
     catalogVersion: "1.0.0",
     catalogDigest,
-    catalogTotalCards: 83,
+    catalogTotalCards: 92,
     applicableCardCount: 2,
     decisionRevision: 4,
     csrfToken,
@@ -119,7 +119,7 @@ test("parses reviewed household decisions on the settings surface", () => {
   const parsed = parseAppsSettingsSnapshot(snapshot());
   assert.equal(parsed.surface, "SETTINGS");
   assert.equal(parsed.tier, "HOUSEHOLD");
-  assert.equal(parsed.catalogTotalCards, 83);
+  assert.equal(parsed.catalogTotalCards, 92);
   assert.deepEqual(
     parsed.cards.map((card) => card.serviceId),
     ["google-calendar", "apple-home"],
@@ -208,7 +208,7 @@ test("rejects tier substitution and incomplete catalog authority", () => {
     () =>
       parseAppsSettingsSnapshot({
         ...snapshot(),
-        catalogTotalCards: 82,
+        catalogTotalCards: 91,
       }),
     AppsSettingsContractError,
   );

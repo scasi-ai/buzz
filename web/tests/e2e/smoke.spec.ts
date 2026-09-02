@@ -704,7 +704,7 @@ test("Household Apps review persists a decision for every applicable card", asyn
         tier: "HOUSEHOLD",
         catalogVersion: "1.0",
         catalogDigest: "d".repeat(64),
-        catalogTotalCards: 83,
+        catalogTotalCards: 92,
         applicableCardCount: 2,
         decisionRevision: 4,
         csrfToken: appsCsrf,

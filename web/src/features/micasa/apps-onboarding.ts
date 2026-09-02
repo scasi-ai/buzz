@@ -55,7 +55,7 @@ export type AppsReviewSnapshot = {
   tier: AppsTier;
   catalogVersion: string;
   catalogDigest: string;
-  catalogTotalCards: 83;
+  catalogTotalCards: 92;
   applicableCardCount: number;
   decisionRevision: number;
   csrfToken: string;
@@ -81,10 +81,60 @@ export type AppsReviewMutation = {
   }>;
 };
 
+const GOOGLE_WORKSPACE_SERVICE_IDS = new Set([
+  "gmail",
+  "google-calendar",
+  "google-chat",
+  "google-classroom",
+  "google-contacts-people",
+  "google-docs",
+  "google-drive",
+  "google-forms",
+  "google-keep",
+  "google-meet",
+  "google-photos",
+  "google-sheets",
+  "google-sites",
+  "google-slides",
+  "google-tasks",
+  "notebooklm-gemini-notebook-enterprise",
+  "youtube",
+]);
+
+export function isGoogleWorkspaceService(
+  card: Pick<AppsReviewCard, "serviceId">,
+): boolean {
+  return GOOGLE_WORKSPACE_SERVICE_IDS.has(card.serviceId);
+}
+
+export function matchesAppsServiceSearch(
+  card: Pick<
+    AppsReviewCard,
+    "serviceId" | "displayName" | "category" | "catalogStatus" | "details"
+  >,
+  query: string,
+  aliases: readonly string[] = [],
+): boolean {
+  const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  const searchable = [
+    card.serviceId,
+    card.displayName,
+    card.category,
+    card.catalogStatus,
+    card.details,
+    ...aliases,
+  ]
+    .join(" ")
+    .toLocaleLowerCase();
+  return terms.every((term) => searchable.includes(term));
+}
+
 type JsonObject = Record<string, unknown>;
 const API_PREFIX = "/api/micasa/v1";
 const APPS_PATH = `${API_PREFIX}/onboarding/apps`;
 const REQUEST_TIMEOUT_MS = 15_000;
+export const LOCKED_CATALOG_CARD_COUNT = 92;
 const REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 const SERVICE_ID = /^[a-z0-9][a-z0-9-]{0,95}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
@@ -274,7 +324,10 @@ export function parseAppsReviewSnapshot(value: unknown): AppsReviewSnapshot {
   if (!DIGEST.test(digest) || !CSRF.test(csrfToken)) {
     throw new AppsOnboardingContractError("The catalog authority is invalid.");
   }
-  if (record.catalogTotalCards !== 83 || !Array.isArray(record.cards)) {
+  if (
+    record.catalogTotalCards !== LOCKED_CATALOG_CARD_COUNT ||
+    !Array.isArray(record.cards)
+  ) {
     throw new AppsOnboardingContractError("The locked catalog is incomplete.");
   }
   const cards = record.cards.map((card, index) => parseCard(card, tier, index));
@@ -309,7 +362,7 @@ export function parseAppsReviewSnapshot(value: unknown): AppsReviewSnapshot {
     tier,
     catalogVersion: text(record, "catalogVersion", "apps", 32),
     catalogDigest: digest,
-    catalogTotalCards: 83,
+    catalogTotalCards: LOCKED_CATALOG_CARD_COUNT,
     applicableCardCount,
     decisionRevision: positiveInteger(record, "decisionRevision", "apps"),
     csrfToken,

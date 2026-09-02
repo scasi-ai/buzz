@@ -18,6 +18,8 @@ import {
   type AppsReviewCard,
   type AppsTier,
   defaultReviewDecision,
+  isGoogleWorkspaceService,
+  matchesAppsServiceSearch,
 } from "@/features/micasa/apps-onboarding";
 import {
   type AppsSettingsCard,
@@ -27,6 +29,7 @@ import {
 } from "@/features/micasa/apps-settings";
 import type { MiCasaBootstrap } from "@/features/micasa/contracts";
 import { GoogleCalendarOAuthPanel } from "@/features/micasa/ui/GoogleCalendarOAuthPanel";
+import { GoogleWorkspacePlanner } from "@/features/micasa/ui/GoogleWorkspacePlanner";
 import { Button } from "@/shared/ui/button";
 
 type ReadyMiCasaBootstrap = Extract<MiCasaBootstrap, { state: "READY" }>;
@@ -306,6 +309,7 @@ function SettingsEditor({
   save: (decisions: Record<string, AppsDecision>) => void;
 }) {
   const [search, setSearch] = useState("");
+  const [googleOnly, setGoogleOnly] = useState(false);
   const [decisions, setDecisions] = useState<Record<string, AppsDecision>>({});
   useEffect(() => {
     setDecisions(
@@ -315,14 +319,22 @@ function SettingsEditor({
     );
   }, [snapshot]);
   const filtered = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase();
-    if (!query) return snapshot.cards;
-    return snapshot.cards.filter(
-      (card) =>
-        card.displayName.toLocaleLowerCase().includes(query) ||
-        categoryLabels[card.category].toLocaleLowerCase().includes(query),
+    const providerCards = googleOnly
+      ? snapshot.cards.filter(isGoogleWorkspaceService)
+      : snapshot.cards;
+    return providerCards.filter((card) =>
+      matchesAppsServiceSearch(card, search, [
+        categoryLabels[card.category],
+        statusLabels[card.catalogStatus],
+        placementLabels[card.placement],
+        ...card.routeKinds.map((route) => routeLabels[route]),
+        authorizationLabels[card.authorizationStatus],
+        resourceLabels[card.resourceStatus],
+        syncLabels[card.syncStatus],
+        operationLabels[card.operationStatus],
+      ]),
     );
-  }, [search, snapshot]);
+  }, [googleOnly, search, snapshot]);
   const grouped = useMemo(
     () =>
       Object.entries(categoryLabels)
@@ -376,6 +388,12 @@ function SettingsEditor({
         credentials, or moves private data into the household scope. A separate,
         verified authorization and resource-selection flow is always required.
       </div>
+      <GoogleWorkspacePlanner
+        active={googleOnly}
+        onToggle={() => setGoogleOnly((current) => !current)}
+        serviceCount={snapshot.cards.filter(isGoogleWorkspaceService).length}
+        tier={snapshot.tier}
+      />
       {success && (
         <p
           className="mt-4 flex items-center rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800"
@@ -399,13 +417,13 @@ function SettingsEditor({
             aria-hidden="true"
             className="absolute left-3 top-3 h-4 w-4 text-slate-400"
           />
-          <span className="sr-only">Search apps and categories</span>
+          <span className="sr-only">Search services to connect</span>
           <input
             className="h-10 w-full rounded-xl border border-slate-300 pl-9 pr-3 text-sm outline-none focus:border-slate-600"
             onChange={(event: ChangeEvent<HTMLInputElement>) =>
               setSearch(event.target.value)
             }
-            placeholder="Search all apps and categories"
+            placeholder="Search services to connect — Google, OAuth, MCP…"
             type="search"
             value={search}
           />
@@ -440,6 +458,28 @@ function SettingsEditor({
           </section>
         ))}
       </div>
+      {filtered.length === 0 && (
+        <div
+          className="mt-8 rounded-2xl border border-dashed border-slate-300 px-5 py-10 text-center"
+          role="status"
+        >
+          <p className="font-medium text-slate-800">No services found</p>
+          <p className="mt-1 text-sm text-slate-500">
+            Try a provider name, OAuth, MCP, category, or connection status.
+          </p>
+          <Button
+            className="mt-4"
+            onClick={() => {
+              setSearch("");
+              setGoogleOnly(false);
+            }}
+            type="button"
+            variant="outline"
+          >
+            Clear search
+          </Button>
+        </div>
+      )}
       <div className="sticky bottom-4 mt-8 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-lg backdrop-blur">
         <p className="text-xs text-slate-500">
           Decision revision {snapshot.decisionRevision}

@@ -4,6 +4,8 @@ import {
   AppsOnboardingContractError,
   buildAppsDecisionPayload,
   defaultReviewDecision,
+  isGoogleWorkspaceService,
+  matchesAppsServiceSearch,
   parseAppsReviewMutation,
   parseAppsReviewSnapshot,
 } from "./apps-onboarding.ts";
@@ -26,9 +28,9 @@ function snapshot(overrides = {}) {
   return {
     state: "REVIEW_REQUIRED",
     tier: "HOUSEHOLD",
-    catalogVersion: "1.0",
+    catalogVersion: "1.1",
     catalogDigest: "a".repeat(64),
-    catalogTotalCards: 83,
+    catalogTotalCards: 92,
     applicableCardCount: 2,
     decisionRevision: 4,
     csrfToken,
@@ -48,8 +50,44 @@ function snapshot(overrides = {}) {
 }
 test("parses a complete applicable review projection", () => {
   const parsed = parseAppsReviewSnapshot(snapshot());
-  assert.equal(parsed.catalogTotalCards, 83);
+  assert.equal(parsed.catalogTotalCards, 92);
   assert.equal(parsed.cards.length, 2);
+});
+test("groups only explicit Google service cards under the provider planner", () => {
+  for (const serviceId of [
+    "gmail",
+    "google-chat",
+    "notebooklm-gemini-notebook-enterprise",
+    "youtube",
+  ]) {
+    assert.equal(isGoogleWorkspaceService({ serviceId }), true);
+  }
+  assert.equal(isGoogleWorkspaceService({ serviceId: "tldv" }), false);
+  assert.equal(isGoogleWorkspaceService({ serviceId: "aspire-mcp" }), false);
+});
+test("searches services by provider, connection method, and multi-word status", () => {
+  const google = card({
+    serviceId: "google-calendar",
+    displayName: "Google Calendar",
+    details: "Calendar API or reviewed Google MCP with separate OAuth consent.",
+  });
+  assert.equal(matchesAppsServiceSearch(google, "google oauth"), true);
+  assert.equal(matchesAppsServiceSearch(google, "MCP calendar"), true);
+  assert.equal(matchesAppsServiceSearch(google, "Dropbox"), false);
+  assert.equal(
+    matchesAppsServiceSearch(google, "hosted mcp", [
+      "Hosted MCP",
+      "Consent required",
+    ]),
+    true,
+  );
+  assert.equal(
+    matchesAppsServiceSearch(google, "consent required", [
+      "Hosted MCP",
+      "Consent required",
+    ]),
+    true,
+  );
 });
 test("refuses transport and operator fields", () => {
   assert.throws(
