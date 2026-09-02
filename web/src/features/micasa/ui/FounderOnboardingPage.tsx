@@ -17,6 +17,7 @@ import {
   saveFounderProfiles,
 } from "@/features/micasa/founder-onboarding";
 import { AppsReviewStage } from "@/features/micasa/ui/AppsReviewStage";
+import { MiCasaSignerBoundary } from "@/features/micasa/ui/MiCasaSignerBoundary";
 import { Button } from "@/shared/ui/button";
 
 function Brand() {
@@ -356,7 +357,7 @@ function FounderProfiles({
     </Frame>
   );
 }
-export function FounderOnboardingPage() {
+function FounderOnboardingAuthority() {
   const onboarding = useQuery({
     queryKey: ["micasa", "founder-onboarding"],
     queryFn: loadFounderOnboarding,
@@ -429,5 +430,28 @@ export function FounderOnboardingPage() {
         </Button>
       </div>
     </Frame>
+  );
+}
+
+function FounderSignerShell({ children }: { children: ReactNode }) {
+  return (
+    <main className="min-h-dvh bg-slate-50 p-5 sm:p-8">
+      <div className="mx-auto max-w-5xl">
+        <Brand />
+        <div className="mt-8">{children}</div>
+      </div>
+    </main>
+  );
+}
+
+export function FounderOnboardingPage() {
+  return (
+    <MiCasaSignerBoundary
+      renderUnavailable={(content) => (
+        <FounderSignerShell>{content}</FounderSignerShell>
+      )}
+    >
+      {() => <FounderOnboardingAuthority />}
+    </MiCasaSignerBoundary>
   );
 }

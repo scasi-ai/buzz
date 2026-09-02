@@ -152,8 +152,10 @@ function Enrollment({
 
 export function MiCasaSignerBoundary({
   children,
+  renderUnavailable,
 }: {
   children: (signer: MiCasaNostrSigner) => ReactNode;
+  renderUnavailable?: (content: ReactNode) => ReactNode;
 }) {
   const signerAuthority = useQuery({
     queryKey: ["micasa", "signer"],
@@ -193,37 +195,39 @@ export function MiCasaSignerBoundary({
     [signer],
   );
 
-  if (signerAuthority.isPending) return <Loading />;
+  const unavailable = (content: ReactNode) =>
+    renderUnavailable ? renderUnavailable(content) : content;
+  if (signerAuthority.isPending) return unavailable(<Loading />);
   if (signerAuthority.isError || !signerAuthority.data) {
-    return (
+    return unavailable(
       <Failed
         message="Personal-Agent could not verify signer authority. No fallback identity was created."
         retry={() => void signerAuthority.refetch()}
-      />
+      />,
     );
   }
   if (signerAuthority.data.state === "ENROLLMENT_REQUIRED") {
-    return (
+    return unavailable(
       <Enrollment
         onReady={(handle) => {
           setUnlockError(null);
           setSigner(handle);
         }}
         snapshot={signerAuthority.data}
-      />
+      />,
     );
   }
   if (unlockError) {
-    return (
+    return unavailable(
       <Failed
         message={unlockError}
         retry={() => {
           setUnlockError(null);
           void signerAuthority.refetch();
         }}
-      />
+      />,
     );
   }
-  if (!signer) return <Loading />;
+  if (!signer) return unavailable(<Loading />);
   return <>{children(signer)}</>;
 }

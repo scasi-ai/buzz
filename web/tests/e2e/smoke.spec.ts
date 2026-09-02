@@ -1,4 +1,84 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+async function routeFounderSigner(page: Page) {
+  const challenge = "f".repeat(64);
+  const csrfToken = `csrf_${"s".repeat(48)}`;
+  let enrolledPublicKey: string | null = null;
+  await page.route("**/api/micasa/v1/signer", async (route) => {
+    if (route.request().method() === "PUT") {
+      const payload = route.request().postDataJSON();
+      enrolledPublicKey = payload.proof.pubkey;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          state: "VERIFIED",
+          operation: {
+            operationId: "operation:founder-signer",
+            idempotencyKey: `micasa-signer-enrollment:${"e".repeat(64)}`,
+            operation: "ENROLL_BROWSER_SIGNER",
+            retrySafe: true,
+            mutationPossible: false,
+            nextAction: "SET_UP_SIGNER_RECOVERY",
+            policyRevision: 2,
+            readbackAt: 1000,
+            effects: [
+              "PUBLIC_KEY_BOUND",
+              "DEVICE_REGISTERED",
+              "RECOVERY_NOT_ASSUMED",
+              "PRIVATE_KEY_NOT_RECEIVED",
+            ],
+          },
+          readback: {
+            state: "READY",
+            bindingId: "signer-binding:founder-e2e",
+            publicKey: enrolledPublicKey,
+            deviceId: "signer-device:founder-e2e",
+            keyRevision: 1,
+            recoveryState: "SETUP_REQUIRED",
+            registrationRevision: 2,
+            enrollmentChallenge: null,
+            csrfToken,
+          },
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(
+        enrolledPublicKey
+          ? {
+              state: "READY",
+              bindingId: "signer-binding:founder-e2e",
+              publicKey: enrolledPublicKey,
+              deviceId: "signer-device:founder-e2e",
+              keyRevision: 1,
+              recoveryState: "SETUP_REQUIRED",
+              registrationRevision: 2,
+              enrollmentChallenge: null,
+              csrfToken,
+            }
+          : {
+              state: "ENROLLMENT_REQUIRED",
+              bindingId: "signer-binding:founder-e2e",
+              publicKey: null,
+              deviceId: null,
+              keyRevision: 0,
+              recoveryState: "SETUP_REQUIRED",
+              registrationRevision: 1,
+              enrollmentChallenge: challenge,
+              csrfToken,
+            },
+      ),
+    });
+  });
+}
+
+async function enrollFounderSigner(page: Page) {
+  await page.getByRole("button", { name: "Secure this device" }).click();
+}
 
 const alexParticipant = {
   subjectId: "member-1",
@@ -363,6 +443,8 @@ test("founder onboarding captures named agents without a Buzz community step", a
   let mutationObserved = false;
   const csrfToken = `csrf_${"a".repeat(40)}`;
 
+  await routeFounderSigner(page);
+
   await page.route("**/api/micasa/v1/onboarding**", async (route) => {
     if (route.request().method() === "PUT") {
       mutationObserved = true;
@@ -443,6 +525,7 @@ test("founder onboarding captures named agents without a Buzz community step", a
   });
 
   await page.goto("/onboarding");
+  await enrollFounderSigner(page);
   await expect(
     page.getByRole("heading", {
       name: "Name your Household and its agents",
@@ -650,6 +733,7 @@ test("Household Apps review persists a decision for every applicable card", asyn
   const founderCsrf = `csrf_founder_${"a".repeat(32)}`;
   const appsCsrf = `csrf_apps_${"b".repeat(32)}`;
   let mutationObserved = false;
+  await routeFounderSigner(page);
 
   await page.route("**/api/micasa/v1/onboarding/apps**", async (route) => {
     expect(new URL(route.request().url()).searchParams.get("tier")).toBe(
@@ -748,6 +832,7 @@ test("Household Apps review persists a decision for every applicable card", asyn
   });
 
   await page.goto("/onboarding");
+  await enrollFounderSigner(page);
   await expect(
     page.getByRole("heading", {
       name: "Review Household Apps & Services",
