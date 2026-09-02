@@ -5,10 +5,63 @@ import {
   MiCasaContractError,
   parseGroupHouseholdAgentMutation,
   parseGroupHouseholdAgentSettings,
+  parseHouseholdInvitation,
   parseInvitationAcceptance,
   parseMiCasaBootstrap,
   parseMiCasaLogout,
 } from "./contracts.ts";
+
+const invitationDisclosure = {
+  state: "CLAIMABLE",
+  householdName: "River House",
+  inviterName: "Alex",
+  role: "MEMBER",
+  expiresAt: "2026-09-03T12:00:00Z",
+  roomScope: [
+    { roomId: "room-household", name: "Household", kind: "HOUSEHOLD" },
+  ],
+  capabilityScope: [
+    {
+      capabilityId: "capability-household-messaging",
+      name: "Household messages",
+    },
+  ],
+  consentNotices: [
+    {
+      noticeId: "consent-shared-room-visibility",
+      text: "Household members and their Agents can access messages in shared rooms.",
+    },
+  ],
+  personalAgentRequired: true,
+  personalAgentReserved: true,
+  csrfToken: `csrf_${"a".repeat(48)}`,
+};
+
+test("invitation exposes the complete scope and reserved Personal Agent", () => {
+  assert.deepEqual(
+    parseHouseholdInvitation(invitationDisclosure),
+    invitationDisclosure,
+  );
+});
+
+test("invitation rejects incomplete, duplicate, or technical disclosure", () => {
+  for (const value of [
+    { ...invitationDisclosure, roomScope: [] },
+    { ...invitationDisclosure, capabilityScope: [] },
+    { ...invitationDisclosure, consentNotices: [] },
+    { ...invitationDisclosure, personalAgentReserved: false },
+    {
+      ...invitationDisclosure,
+      roomScope: [
+        ...invitationDisclosure.roomScope,
+        invitationDisclosure.roomScope[0],
+      ],
+    },
+    { ...invitationDisclosure, relayHost: "internal.example" },
+  ]) {
+    assert.throws(() => parseHouseholdInvitation(value), MiCasaContractError);
+  }
+});
 
 test("invitation acceptance reserves onboarding without preactivating Buzz", () => {
   const claimId = `member-onboarding:${"8".repeat(64)}`;

@@ -93,7 +93,21 @@ export type HouseholdInvitation = {
   inviterName: string;
   role: HouseholdRole;
   expiresAt: string;
+  roomScope: Array<{
+    roomId: string;
+    name: string;
+    kind: RoomKind;
+  }>;
+  capabilityScope: Array<{
+    capabilityId: string;
+    name: string;
+  }>;
+  consentNotices: Array<{
+    noticeId: string;
+    text: string;
+  }>;
   personalAgentRequired: true;
+  personalAgentReserved: true;
   signInPath?: string;
   csrfToken?: string;
 };
@@ -611,6 +625,11 @@ export function parseHouseholdInvitation(value: unknown): HouseholdInvitation {
       "A Household invitation must require a Personal Agent.",
     );
   }
+  if (record.personalAgentReserved !== true) {
+    throw new MiCasaContractError(
+      "A Household invitation must reserve a Personal Agent.",
+    );
+  }
   const expiresAt = text(record, "expiresAt", "invitation");
   if (Number.isNaN(Date.parse(expiresAt))) {
     throw new MiCasaContractError(
@@ -618,15 +637,131 @@ export function parseHouseholdInvitation(value: unknown): HouseholdInvitation {
     );
   }
 
+  const roomValues = array(record.roomScope, "invitation.roomScope");
+  if (roomValues.length < 1 || roomValues.length > 512) {
+    throw new MiCasaContractError(
+      "invitation.roomScope must contain 1 to 512 rooms.",
+    );
+  }
+  const roomScope = roomValues.map((value, index) => {
+    const label = `invitation.roomScope[${index}]`;
+    const room = object(value, label);
+    if (Object.keys(room).sort().join("\0") !== "kind\0name\0roomId") {
+      throw new MiCasaContractError(`${label} has an unsupported field.`);
+    }
+    return {
+      roomId: publicReference(room, "roomId", label),
+      name: text(room, "name", label),
+      kind: choice(
+        room.kind,
+        ["HOUSEHOLD", "PERSONAL_AGENT", "DM", "GROUP"] as const,
+        `${label}.kind`,
+      ),
+    };
+  });
+  if (
+    new Set(roomScope.map(({ roomId }) => roomId)).size !== roomScope.length
+  ) {
+    throw new MiCasaContractError(
+      "invitation.roomScope contains a duplicate room.",
+    );
+  }
+
+  const capabilityValues = array(
+    record.capabilityScope,
+    "invitation.capabilityScope",
+  );
+  if (capabilityValues.length < 1 || capabilityValues.length > 128) {
+    throw new MiCasaContractError(
+      "invitation.capabilityScope must contain 1 to 128 capabilities.",
+    );
+  }
+  const capabilityScope = capabilityValues.map((value, index) => {
+    const label = `invitation.capabilityScope[${index}]`;
+    const capability = object(value, label);
+    if (Object.keys(capability).sort().join("\0") !== "capabilityId\0name") {
+      throw new MiCasaContractError(`${label} has an unsupported field.`);
+    }
+    return {
+      capabilityId: publicReference(capability, "capabilityId", label),
+      name: text(capability, "name", label),
+    };
+  });
+  if (
+    new Set(capabilityScope.map(({ capabilityId }) => capabilityId)).size !==
+    capabilityScope.length
+  ) {
+    throw new MiCasaContractError(
+      "invitation.capabilityScope contains a duplicate capability.",
+    );
+  }
+
+  const consentValues = array(
+    record.consentNotices,
+    "invitation.consentNotices",
+  );
+  if (consentValues.length < 1 || consentValues.length > 32) {
+    throw new MiCasaContractError(
+      "invitation.consentNotices must contain 1 to 32 notices.",
+    );
+  }
+  const consentNotices = consentValues.map((value, index) => {
+    const label = `invitation.consentNotices[${index}]`;
+    const notice = object(value, label);
+    if (Object.keys(notice).sort().join("\0") !== "noticeId\0text") {
+      throw new MiCasaContractError(`${label} has an unsupported field.`);
+    }
+    const noticeText = text(notice, "text", label);
+    if (noticeText.length > 500) {
+      throw new MiCasaContractError(`${label}.text is too long.`);
+    }
+    return {
+      noticeId: publicReference(notice, "noticeId", label),
+      text: noticeText,
+    };
+  });
+  if (
+    new Set(consentNotices.map(({ noticeId }) => noticeId)).size !==
+    consentNotices.length
+  ) {
+    throw new MiCasaContractError(
+      "invitation.consentNotices contains a duplicate notice.",
+    );
+  }
+
+  const expectedFields = [
+    "capabilityScope",
+    "consentNotices",
+    "expiresAt",
+    "householdName",
+    "inviterName",
+    "personalAgentRequired",
+    "personalAgentReserved",
+    "role",
+    "roomScope",
+    "state",
+    ...(state === "UNAUTHENTICATED" ? ["signInPath"] : []),
+    ...(state === "CLAIMABLE" ? ["csrfToken"] : []),
+  ].sort();
+  if (Object.keys(record).sort().join("\0") !== expectedFields.join("\0")) {
+    throw new MiCasaContractError("invitation has an unsupported field.");
+  }
+
+  const signInPath = optionalPath(record, "signInPath", "invitation");
+  const csrfToken = optionalText(record, "csrfToken", "invitation");
   const invitation: HouseholdInvitation = {
     state,
     householdName: text(record, "householdName", "invitation"),
     inviterName: text(record, "inviterName", "invitation"),
     role: parseRole(record.role, "invitation.role"),
     expiresAt,
+    roomScope,
+    capabilityScope,
+    consentNotices,
     personalAgentRequired: true,
-    signInPath: optionalPath(record, "signInPath", "invitation"),
-    csrfToken: optionalText(record, "csrfToken", "invitation"),
+    personalAgentReserved: true,
+    ...(signInPath === undefined ? {} : { signInPath }),
+    ...(csrfToken === undefined ? {} : { csrfToken }),
   };
 
   if (state === "UNAUTHENTICATED" && !invitation.signInPath) {

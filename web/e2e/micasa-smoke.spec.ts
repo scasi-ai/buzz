@@ -207,7 +207,23 @@ test("Household invitation uses Scasi sign-in and discloses My Agent", async ({
           inviterName: "Alex",
           role: "MEMBER",
           expiresAt: "2026-09-03T12:00:00Z",
+          roomScope: [
+            { roomId: "room-household", name: "Household", kind: "HOUSEHOLD" },
+          ],
+          capabilityScope: [
+            {
+              capabilityId: "capability-household-messaging",
+              name: "Household messages",
+            },
+          ],
+          consentNotices: [
+            {
+              noticeId: "consent-shared-room-visibility",
+              text: "Household members and their Agents can access messages in shared rooms.",
+            },
+          ],
           personalAgentRequired: true,
+          personalAgentReserved: true,
           signInPath:
             "/api/micasa/v1/auth/start?return_to=%2Finvite%2Ffamily-code",
         }),
@@ -220,7 +236,14 @@ test("Household invitation uses Scasi sign-in and discloses My Agent", async ({
   await expect(
     page.getByRole("heading", { name: "River House" }),
   ).toBeVisible();
-  await expect(page.getByText("Created during setup")).toBeVisible();
+  await expect(page.getByText("Reserved for your setup")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Rooms included" }),
+  ).toBeVisible();
+  await expect(page.getByText("Household messages")).toBeVisible();
+  await expect(
+    page.getByText(/members and their Agents can access messages/),
+  ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Sign in to review invitation" }),
   ).toHaveAttribute(
@@ -260,7 +283,23 @@ test("claiming a Household invitation sends CSRF protection to PA", async ({
           inviterName: "Alex",
           role: "MEMBER",
           expiresAt: "2026-09-03T12:00:00Z",
+          roomScope: [
+            { roomId: "room-household", name: "Household", kind: "HOUSEHOLD" },
+          ],
+          capabilityScope: [
+            {
+              capabilityId: "capability-household-messaging",
+              name: "Household messages",
+            },
+          ],
+          consentNotices: [
+            {
+              noticeId: "consent-shared-room-visibility",
+              text: "Household members and their Agents can access messages in shared rooms.",
+            },
+          ],
           personalAgentRequired: true,
+          personalAgentReserved: true,
           csrfToken: "csrf-123",
         }),
       });

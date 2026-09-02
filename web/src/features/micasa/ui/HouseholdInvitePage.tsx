@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   CheckCircle2,
+  CircleCheck,
   House,
   LoaderCircle,
   LogIn,
@@ -116,10 +117,69 @@ export function HouseholdInvitePage({ code }: { code: string }) {
             <dt className="text-slate-500">Personal Agent</dt>
             <dd className="flex items-center gap-2 font-medium text-slate-900">
               <UserRoundPlus aria-hidden="true" className="h-4 w-4" />
-              Created during setup
+              Reserved for your setup
             </dd>
           </div>
         </dl>
+
+        <div className="mt-5 grid gap-5 rounded-2xl border border-slate-200 p-5 text-sm">
+          <section aria-labelledby="invitation-rooms-heading">
+            <h2
+              className="font-semibold text-slate-950"
+              id="invitation-rooms-heading"
+            >
+              Rooms included
+            </h2>
+            <ul className="mt-2 grid gap-2 text-slate-700">
+              {data.roomScope.map((room) => (
+                <li className="flex items-start gap-2" key={room.roomId}>
+                  <CircleCheck
+                    aria-hidden="true"
+                    className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700"
+                  />
+                  <span>{room.name}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section aria-labelledby="invitation-capabilities-heading">
+            <h2
+              className="font-semibold text-slate-950"
+              id="invitation-capabilities-heading"
+            >
+              Access included
+            </h2>
+            <ul className="mt-2 grid gap-2 text-slate-700">
+              {data.capabilityScope.map((capability) => (
+                <li
+                  className="flex items-start gap-2"
+                  key={capability.capabilityId}
+                >
+                  <CircleCheck
+                    aria-hidden="true"
+                    className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700"
+                  />
+                  <span>{capability.name}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section aria-labelledby="invitation-consent-heading">
+            <h2
+              className="font-semibold text-slate-950"
+              id="invitation-consent-heading"
+            >
+              Before you accept
+            </h2>
+            <ul className="mt-2 list-disc space-y-2 pl-5 leading-6 text-slate-600">
+              {data.consentNotices.map((notice) => (
+                <li key={notice.noticeId}>{notice.text}</li>
+              ))}
+            </ul>
+          </section>
+        </div>
 
         <div className="mt-5 flex items-start gap-3 rounded-2xl border border-slate-200 p-4">
           <ShieldCheck
