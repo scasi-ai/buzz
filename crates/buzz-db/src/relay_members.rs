@@ -485,7 +485,7 @@ pub async fn transfer_ownership(
     let existing_owners: Vec<String> = sqlx::query_scalar(
         "SELECT pubkey FROM relay_members \
          WHERE community_id = $1 AND role = 'owner' \
-         FOR UPDATE",
+         ORDER BY pubkey FOR UPDATE",
     )
     .bind(community.as_uuid())
     .fetch_all(&mut *tx)

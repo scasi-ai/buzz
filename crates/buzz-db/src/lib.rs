@@ -1826,6 +1826,28 @@ impl Db {
         .await
     }
 
+    /// Atomically creates one create-only private stream channel while the
+    /// requested initial owner is still a current community owner.
+    #[datastore_span(name = "create_operator_channel_with_owner", system = "postgresql")]
+    pub async fn create_operator_channel_with_owner(
+        &self,
+        community_id: CommunityId,
+        channel_id: Uuid,
+        name: &str,
+        initial_owner: &[u8],
+        relay_keypair: &nostr::Keys,
+    ) -> Result<channel::CreateOperatorChannelWithOwnerResult> {
+        channel::create_operator_channel_with_owner(
+            &self.pool,
+            community_id,
+            channel_id,
+            name,
+            initial_owner,
+            relay_keypair,
+        )
+        .await
+    }
+
     /// Fetches a channel record by ID.
     #[datastore_span(name = "get_channel", system = "postgresql")]
     pub async fn get_channel(
