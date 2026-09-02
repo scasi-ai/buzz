@@ -22,6 +22,7 @@ import {
   type ManagedMember,
   type MemberCommand,
   mutateHouseholdMembers,
+  type SharedCapability,
   type SharedRoom,
 } from "@/features/micasa/household-members";
 import { Button } from "@/shared/ui/button";
@@ -169,14 +170,75 @@ function RoomChoices({
   );
 }
 
+function CapabilityChoices({
+  capabilities,
+  selected,
+  onChange,
+  disabled,
+}: {
+  capabilities: SharedCapability[];
+  selected: string[];
+  onChange: (capabilityIds: string[]) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <fieldset className="mt-4">
+      <legend className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+        Household capabilities
+      </legend>
+      <p className="mt-1 text-xs leading-5 text-slate-500">
+        Choose what this member and their Personal Agent may do in shared
+        Household spaces. At least one is required.
+      </p>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        {capabilities.map((capability) => {
+          const checked = selected.includes(capability.capabilityId);
+          return (
+            <label
+              className="flex items-start gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700"
+              key={capability.capabilityId}
+            >
+              <input
+                checked={checked}
+                className="mt-0.5"
+                disabled={disabled}
+                onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                  onChange(
+                    event.target.checked
+                      ? capabilities
+                          .map((item) => item.capabilityId)
+                          .filter(
+                            (capabilityId) =>
+                              selected.includes(capabilityId) ||
+                              capabilityId === capability.capabilityId,
+                          )
+                      : selected.filter(
+                          (capabilityId) =>
+                            capabilityId !== capability.capabilityId,
+                        ),
+                  );
+                }}
+                type="checkbox"
+              />
+              {capability.displayName}
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
 function MemberEditor({
   member,
   rooms,
+  capabilities,
   busy,
   submit,
 }: {
   member: ManagedMember;
   rooms: SharedRoom[];
+  capabilities: SharedCapability[];
   busy: boolean;
   submit: (command: MemberCommand) => void;
 }) {
@@ -187,6 +249,9 @@ function MemberEditor({
   );
   const [selectedRooms, setSelectedRooms] = useState(
     member.configuredSharedRoomIds,
+  );
+  const [selectedCapabilities, setSelectedCapabilities] = useState(
+    member.configuredCapabilityIds,
   );
   const protectedHead = member.role === "HEAD";
   const canEdit =
@@ -227,6 +292,11 @@ function MemberEditor({
           rooms={rooms}
           selected={selectedRooms}
         />
+        <CapabilityChoices
+          capabilities={capabilities}
+          onChange={setSelectedCapabilities}
+          selected={selectedCapabilities}
+        />
         <div className="mt-5 flex justify-end gap-2">
           <Button
             className="border border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
@@ -238,7 +308,11 @@ function MemberEditor({
           </Button>
           <Button
             className="bg-slate-950 text-white hover:bg-slate-800"
-            disabled={busy || displayName.trim().length === 0}
+            disabled={
+              busy ||
+              displayName.trim().length === 0 ||
+              selectedCapabilities.length === 0
+            }
             onClick={() =>
               submit({
                 operation: "UPDATE_MEMBER",
@@ -246,6 +320,7 @@ function MemberEditor({
                 displayName: displayName.trim(),
                 role,
                 configuredSharedRoomIds: selectedRooms,
+                configuredCapabilityIds: selectedCapabilities,
               })
             }
             type="button"
@@ -288,6 +363,9 @@ function MemberEditor({
               <p className="mt-2 text-xs text-slate-500">
                 {member.configuredSharedRoomIds.length} shared room
                 {member.configuredSharedRoomIds.length === 1 ? "" : "s"}
+                {" · "}
+                {member.configuredCapabilityIds.length} capabilit
+                {member.configuredCapabilityIds.length === 1 ? "y" : "ies"}
               </p>
             )}
           </div>
@@ -378,7 +456,9 @@ function InvitationCard({
           </p>
           <p className="mt-2 text-xs text-slate-500">
             {invitation.role === "ADMIN" ? "Administrator" : "Member"} ·
-            Personal Agent reserved
+            Personal Agent reserved ·{" "}
+            {invitation.configuredCapabilityIds.length} capabilit
+            {invitation.configuredCapabilityIds.length === 1 ? "y" : "ies"}
           </p>
         </div>
         <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800">
@@ -447,9 +527,17 @@ function InviteForm({
   const [displayName, setDisplayName] = useState("");
   const [role, setRole] = useState<"ADMIN" | "MEMBER">("MEMBER");
   const [selectedRooms, setSelectedRooms] = useState<string[]>([]);
+  const [selectedCapabilities, setSelectedCapabilities] = useState<string[]>(
+    [],
+  );
   useEffect(() => {
     setSelectedRooms(snapshot.sharedRooms.map((room) => room.roomId));
   }, [snapshot.sharedRooms]);
+  useEffect(() => {
+    setSelectedCapabilities(
+      snapshot.sharedCapabilities.map((capability) => capability.capabilityId),
+    );
+  }, [snapshot.sharedCapabilities]);
 
   return (
     <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
@@ -513,13 +601,19 @@ function InviteForm({
         rooms={snapshot.sharedRooms}
         selected={selectedRooms}
       />
+      <CapabilityChoices
+        capabilities={snapshot.sharedCapabilities}
+        onChange={setSelectedCapabilities}
+        selected={selectedCapabilities}
+      />
       <div className="mt-5 flex justify-end">
         <Button
           className="bg-slate-950 text-white hover:bg-slate-800"
           disabled={
             busy ||
             displayName.trim().length === 0 ||
-            recipientEmail.trim().length === 0
+            recipientEmail.trim().length === 0 ||
+            selectedCapabilities.length === 0
           }
           onClick={() =>
             submit({
@@ -528,6 +622,7 @@ function InviteForm({
               displayName: displayName.trim(),
               role,
               configuredSharedRoomIds: selectedRooms,
+              configuredCapabilityIds: selectedCapabilities,
             })
           }
           type="button"
@@ -573,8 +668,8 @@ function HouseholdMembersContent({
             Members &amp; invitations
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
-            Manage who belongs to this household, their shared rooms, and their
-            Personal Agent access.
+            Manage who belongs to this household, their shared rooms,
+            capabilities, and Personal Agent access.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -667,6 +762,7 @@ function HouseholdMembersContent({
                 key={`${member.memberId}:${member.membershipRevision}`}
                 member={member}
                 rooms={snapshot.sharedRooms}
+                capabilities={snapshot.sharedCapabilities}
                 submit={submit}
               />
             ))}

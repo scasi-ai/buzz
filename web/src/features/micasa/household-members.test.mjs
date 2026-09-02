@@ -17,6 +17,8 @@ function member(overrides = {}) {
     personalAgentReadiness: "READY",
     configuredSharedRoomIds: ["room-household", "room-photos"],
     activeSharedRoomCount: 2,
+    configuredCapabilityIds: ["capability-messaging", "capability-shared-apps"],
+    activeCapabilityCount: 2,
     membershipRevision: 3,
     ...overrides,
   };
@@ -38,6 +40,16 @@ function snapshot(overrides = {}) {
         kind: "SHARED",
       },
     ],
+    sharedCapabilities: [
+      {
+        capabilityId: "capability-messaging",
+        displayName: "Send and receive household messages",
+      },
+      {
+        capabilityId: "capability-shared-apps",
+        displayName: "Use approved Household Apps & Data",
+      },
+    ],
     members: [
       member({
         memberId: "member-head",
@@ -54,6 +66,8 @@ function snapshot(overrides = {}) {
         personalAgentReadiness: "SUSPENDED",
         configuredSharedRoomIds: ["room-household"],
         activeSharedRoomCount: 0,
+        configuredCapabilityIds: ["capability-messaging"],
+        activeCapabilityCount: 0,
         membershipRevision: 4,
       }),
       member({
@@ -63,6 +77,8 @@ function snapshot(overrides = {}) {
         personalAgentReadiness: "RESERVED",
         configuredSharedRoomIds: ["room-household"],
         activeSharedRoomCount: 0,
+        configuredCapabilityIds: ["capability-messaging"],
+        activeCapabilityCount: 0,
         membershipRevision: 1,
       }),
     ],
@@ -75,6 +91,7 @@ function snapshot(overrides = {}) {
         role: "MEMBER",
         state: "ACTIVE",
         configuredSharedRoomIds: ["room-household"],
+        configuredCapabilityIds: ["capability-messaging"],
         personalAgentReserved: true,
         expiresAt: 2000,
         invitationRevision: 1,
@@ -198,6 +215,10 @@ test("builds the Head-only invitation command with every shared room", () => {
       displayName: "New member",
       role: "MEMBER",
       configuredSharedRoomIds: ["room-household", "room-photos"],
+      configuredCapabilityIds: [
+        "capability-messaging",
+        "capability-shared-apps",
+      ],
     }),
     {
       method: "POST",
@@ -208,6 +229,10 @@ test("builds the Head-only invitation command with every shared room", () => {
         displayName: "New member",
         role: "MEMBER",
         configuredSharedRoomIds: ["room-household", "room-photos"],
+        configuredCapabilityIds: [
+          "capability-messaging",
+          "capability-shared-apps",
+        ],
       },
     },
   );
@@ -220,6 +245,7 @@ test("builds update and lifecycle routes from authoritative revisions", () => {
     displayName: "Alice updated",
     role: "ADMIN",
     configuredSharedRoomIds: ["room-household"],
+    configuredCapabilityIds: ["capability-messaging"],
   });
   assert.equal(update.method, "PATCH");
   assert.equal(
@@ -227,6 +253,9 @@ test("builds update and lifecycle routes from authoritative revisions", () => {
     "/api/micasa/v1/settings/household/members/member-active",
   );
   assert.equal(update.body.expectedRevision, 3);
+  assert.deepEqual(update.body.configuredCapabilityIds, [
+    "capability-messaging",
+  ]);
   const remove = buildMemberCommandRequest(parsed, {
     operation: "REMOVE_MEMBER",
     subjectId: "member-suspended",
@@ -284,8 +313,42 @@ test("accepts removed members only after rooms and agent are revoked", () => {
     personalAgentReadiness: "REVOKED",
     configuredSharedRoomIds: [],
     activeSharedRoomCount: 0,
+    configuredCapabilityIds: [],
+    activeCapabilityCount: 0,
     membershipRevision: 4,
   };
   const parsed = parseHouseholdMembersSnapshot(value);
   assert.equal(parsed.members[1].lifecycle, "DELETED");
+});
+
+test("requires complete ordered capability authority and selection", () => {
+  const duplicate = snapshot();
+  duplicate.sharedCapabilities = [
+    ...duplicate.sharedCapabilities,
+    duplicate.sharedCapabilities[0],
+  ];
+  assert.throws(
+    () => parseHouseholdMembersSnapshot(duplicate),
+    HouseholdMembersContractError,
+  );
+
+  const parsed = parseHouseholdMembersSnapshot(snapshot());
+  for (const configuredCapabilityIds of [
+    [],
+    ["capability-unknown"],
+    ["capability-shared-apps", "capability-messaging"],
+  ]) {
+    assert.throws(
+      () =>
+        buildMemberCommandRequest(parsed, {
+          operation: "UPDATE_MEMBER",
+          subjectId: "member-active",
+          displayName: "Alice",
+          role: "MEMBER",
+          configuredSharedRoomIds: ["room-household"],
+          configuredCapabilityIds,
+        }),
+      HouseholdMembersContractError,
+    );
+  }
 });

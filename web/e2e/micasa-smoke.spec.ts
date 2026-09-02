@@ -587,6 +587,16 @@ test("Head of Household can suspend a member with verified lifecycle readback", 
         kind: "SHARED",
       },
     ],
+    sharedCapabilities: [
+      {
+        capabilityId: "capability-messaging",
+        displayName: "Send and receive household messages",
+      },
+      {
+        capabilityId: "capability-shared-apps",
+        displayName: "Use approved Household Apps & Data",
+      },
+    ],
     members: [
       {
         memberId: "member-1",
@@ -596,6 +606,11 @@ test("Head of Household can suspend a member with verified lifecycle readback", 
         personalAgentReadiness: "READY",
         configuredSharedRoomIds: ["room-household", "room-photos"],
         activeSharedRoomCount: 2,
+        configuredCapabilityIds: [
+          "capability-messaging",
+          "capability-shared-apps",
+        ],
+        activeCapabilityCount: 2,
         membershipRevision: 1,
       },
       {
@@ -606,6 +621,11 @@ test("Head of Household can suspend a member with verified lifecycle readback", 
         personalAgentReadiness: "READY",
         configuredSharedRoomIds: ["room-household", "room-photos"],
         activeSharedRoomCount: 2,
+        configuredCapabilityIds: [
+          "capability-messaging",
+          "capability-shared-apps",
+        ],
+        activeCapabilityCount: 2,
         membershipRevision: 3,
       },
     ],
@@ -642,6 +662,7 @@ test("Head of Household can suspend a member with verified lifecycle readback", 
               lifecycle: "SUSPENDED",
               personalAgentReadiness: "SUSPENDED",
               activeSharedRoomCount: 0,
+              activeCapabilityCount: 0,
               membershipRevision: 4,
             },
           ],
@@ -689,6 +710,15 @@ test("Head of Household can suspend a member with verified lifecycle readback", 
     page.getByRole("heading", { name: "Members & invitations" }),
   ).toBeVisible();
   await expect(page.getByText(/private agent conversations/)).toBeVisible();
+  const capabilityScope = page.getByRole("group", {
+    name: "Household capabilities",
+  });
+  await expect(
+    capabilityScope.getByLabel("Send and receive household messages"),
+  ).toBeChecked();
+  await expect(
+    capabilityScope.getByLabel("Use approved Household Apps & Data"),
+  ).toBeChecked();
   await expect(page.locator("body")).not.toContainText(/Fizz|Honey|Pollen/i);
   await page.getByRole("button", { name: "Suspend" }).click();
 

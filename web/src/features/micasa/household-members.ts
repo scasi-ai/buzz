@@ -19,6 +19,10 @@ export type SharedRoom = {
   displayName: string;
   kind: "HOUSEHOLD" | "SHARED";
 };
+export type SharedCapability = {
+  capabilityId: string;
+  displayName: string;
+};
 export type ManagedMember = {
   memberId: string;
   displayName: string;
@@ -27,6 +31,8 @@ export type ManagedMember = {
   personalAgentReadiness: PersonalAgentReadiness;
   configuredSharedRoomIds: string[];
   activeSharedRoomCount: number;
+  configuredCapabilityIds: string[];
+  activeCapabilityCount: number;
   membershipRevision: number;
 };
 export type ManagedInvitation = {
@@ -37,6 +43,7 @@ export type ManagedInvitation = {
   role: Exclude<ManagedMemberRole, "HEAD">;
   state: "ACTIVE" | "CLAIMED" | "EXPIRED" | "REVOKED";
   configuredSharedRoomIds: string[];
+  configuredCapabilityIds: string[];
   personalAgentReserved: true;
   expiresAt: number;
   invitationRevision: number;
@@ -47,6 +54,7 @@ export type HouseholdMembersSnapshot = {
   policyRevision: number;
   csrfToken: string;
   sharedRooms: SharedRoom[];
+  sharedCapabilities: SharedCapability[];
   members: ManagedMember[];
   invitations: ManagedInvitation[];
 };
@@ -82,6 +90,7 @@ export type MemberCommand =
       displayName: string;
       role: "ADMIN" | "MEMBER";
       configuredSharedRoomIds: string[];
+      configuredCapabilityIds: string[];
     }
   | {
       operation: "UPDATE_MEMBER";
@@ -89,6 +98,7 @@ export type MemberCommand =
       displayName: string;
       role: "ADMIN" | "MEMBER";
       configuredSharedRoomIds: string[];
+      configuredCapabilityIds: string[];
     }
   | {
       operation:
@@ -278,10 +288,37 @@ function parseRoom(value: unknown, index: number): SharedRoom {
     ),
   };
 }
+function parseCapability(value: unknown, index: number): SharedCapability {
+  const label = `members.sharedCapabilities[${index}]`;
+  const record = object(value, label);
+  exact(record, ["capabilityId", "displayName"], label);
+  return {
+    capabilityId: ref(record, "capabilityId", label),
+    displayName: text(record, "displayName", label, 120),
+  };
+}
+function capabilityRefs(
+  value: unknown,
+  capabilities: SharedCapability[],
+  label: string,
+  requireNonempty: boolean,
+): string[] {
+  const result = refs(
+    value,
+    capabilities.map((capability) => capability.capabilityId),
+    label,
+    null,
+  );
+  if (requireNonempty && result.length === 0) {
+    fail(`${label} must include at least one capability.`);
+  }
+  return result;
+}
 function parseMember(
   value: unknown,
   index: number,
   rooms: SharedRoom[],
+  capabilities: SharedCapability[],
   householdRoomId: string,
 ): ManagedMember {
   const label = `members.members[${index}]`;
@@ -296,6 +333,8 @@ function parseMember(
       "personalAgentReadiness",
       "configuredSharedRoomIds",
       "activeSharedRoomCount",
+      "configuredCapabilityIds",
+      "activeCapabilityCount",
       "membershipRevision",
     ],
     label,
@@ -336,8 +375,28 @@ function parseMember(
   ) {
     fail(`${label} has contradictory active room membership.`);
   }
+  const configuredCapabilities = capabilityRefs(
+    record.configuredCapabilityIds,
+    capabilities,
+    `${label}.configuredCapabilityIds`,
+    lifecycle !== "DELETED",
+  );
+  const activeCapabilityCount = record.activeCapabilityCount;
+  if (
+    !Number.isSafeInteger(activeCapabilityCount) ||
+    (activeCapabilityCount as number) < 0 ||
+    (activeCapabilityCount as number) > configuredCapabilities.length ||
+    (lifecycle === "ACTIVE" &&
+      activeCapabilityCount !== configuredCapabilities.length) ||
+    (lifecycle !== "ACTIVE" && activeCapabilityCount !== 0)
+  ) {
+    fail(`${label} has contradictory active capability access.`);
+  }
   if (lifecycle === "DELETED" && configured.length !== 0) {
     fail(`${label} retains rooms after removal.`);
+  }
+  if (lifecycle === "DELETED" && configuredCapabilities.length !== 0) {
+    fail(`${label} retains capabilities after removal.`);
   }
   return {
     memberId: ref(record, "memberId", label),
@@ -351,6 +410,8 @@ function parseMember(
     personalAgentReadiness: readiness,
     configuredSharedRoomIds: configured,
     activeSharedRoomCount: activeCount as number,
+    configuredCapabilityIds: configuredCapabilities,
+    activeCapabilityCount: activeCapabilityCount as number,
     membershipRevision: positive(record, "membershipRevision", label),
   };
 }
@@ -358,6 +419,7 @@ function parseInvitation(
   value: unknown,
   index: number,
   rooms: SharedRoom[],
+  capabilities: SharedCapability[],
   householdRoomId: string,
   members: ManagedMember[],
 ): ManagedInvitation {
@@ -374,6 +436,7 @@ function parseInvitation(
       "role",
       "state",
       "configuredSharedRoomIds",
+      "configuredCapabilityIds",
       "personalAgentReserved",
       "expiresAt",
       "invitationRevision",
@@ -398,6 +461,12 @@ function parseInvitation(
     householdRoomId,
   );
   const pendingMemberId = ref(record, "pendingMemberId", label);
+  const configuredCapabilities = capabilityRefs(
+    record.configuredCapabilityIds,
+    capabilities,
+    `${label}.configuredCapabilityIds`,
+    true,
+  );
   const displayName = text(record, "displayName", label, 120);
   const role = choice(
     record.role,
@@ -411,7 +480,9 @@ function parseInvitation(
       pending.displayName !== displayName ||
       pending.role !== role ||
       JSON.stringify(pending.configuredSharedRoomIds) !==
-        JSON.stringify(configured))
+        JSON.stringify(configured) ||
+      JSON.stringify(pending.configuredCapabilityIds) !==
+        JSON.stringify(configuredCapabilities))
   ) {
     fail(`${label} does not match its pending household member.`);
   }
@@ -429,6 +500,7 @@ function parseInvitation(
     role,
     state,
     configuredSharedRoomIds: configured,
+    configuredCapabilityIds: configuredCapabilities,
     personalAgentReserved: true,
     expiresAt: positive(record, "expiresAt", label),
     invitationRevision: positive(record, "invitationRevision", label),
@@ -447,6 +519,7 @@ export function parseHouseholdMembersSnapshot(
       "policyRevision",
       "csrfToken",
       "sharedRooms",
+      "sharedCapabilities",
       "members",
       "invitations",
     ],
@@ -454,6 +527,7 @@ export function parseHouseholdMembersSnapshot(
   );
   if (
     !Array.isArray(record.sharedRooms) ||
+    !Array.isArray(record.sharedCapabilities) ||
     !Array.isArray(record.members) ||
     !Array.isArray(record.invitations)
   ) {
@@ -462,6 +536,7 @@ export function parseHouseholdMembersSnapshot(
   const csrfToken = text(record, "csrfToken", "members");
   if (!CSRF.test(csrfToken)) fail("members.csrfToken is invalid.");
   const sharedRooms = record.sharedRooms.map(parseRoom);
+  const sharedCapabilities = record.sharedCapabilities.map(parseCapability);
   const householdRooms = sharedRooms.filter(
     (room) => room.kind === "HOUSEHOLD",
   );
@@ -474,8 +549,27 @@ export function parseHouseholdMembersSnapshot(
   ) {
     fail("Household Settings room authority is inconsistent.");
   }
+  if (
+    sharedCapabilities.length < 1 ||
+    sharedCapabilities.length > 128 ||
+    new Set(sharedCapabilities.map(({ capabilityId }) => capabilityId)).size !==
+      sharedCapabilities.length ||
+    new Set(
+      sharedCapabilities.map(({ displayName }) =>
+        displayName.toLocaleLowerCase(),
+      ),
+    ).size !== sharedCapabilities.length
+  ) {
+    fail("Household Settings capability authority is inconsistent.");
+  }
   const members = record.members.map((item, index) =>
-    parseMember(item, index, sharedRooms, householdRooms[0].roomId),
+    parseMember(
+      item,
+      index,
+      sharedRooms,
+      sharedCapabilities,
+      householdRooms[0].roomId,
+    ),
   );
   if (
     members.length < 1 ||
@@ -491,6 +585,7 @@ export function parseHouseholdMembersSnapshot(
       item,
       index,
       sharedRooms,
+      sharedCapabilities,
       householdRooms[0].roomId,
       members,
     ),
@@ -511,6 +606,7 @@ export function parseHouseholdMembersSnapshot(
     policyRevision: positive(record, "policyRevision", "members"),
     csrfToken,
     sharedRooms,
+    sharedCapabilities,
     members,
     invitations,
   };
@@ -633,6 +729,12 @@ export function buildMemberCommandRequest(
       snapshot.sharedRooms.find((room) => room.kind === "HOUSEHOLD")?.roomId ??
         null,
     );
+    capabilityRefs(
+      command.configuredCapabilityIds,
+      snapshot.sharedCapabilities,
+      "invitation.configuredCapabilityIds",
+      true,
+    );
     return {
       method: "POST",
       path: INVITATIONS_PATH,
@@ -642,6 +744,7 @@ export function buildMemberCommandRequest(
         displayName: command.displayName,
         role: command.role,
         configuredSharedRoomIds: command.configuredSharedRoomIds,
+        configuredCapabilityIds: command.configuredCapabilityIds,
       },
     };
   }
@@ -667,6 +770,12 @@ export function buildMemberCommandRequest(
       snapshot.sharedRooms.find((room) => room.kind === "HOUSEHOLD")?.roomId ??
         null,
     );
+    capabilityRefs(
+      command.configuredCapabilityIds,
+      snapshot.sharedCapabilities,
+      "member.configuredCapabilityIds",
+      true,
+    );
     return {
       method: "PATCH",
       path: requestPath(MEMBERS_PATH, member.memberId),
@@ -675,6 +784,7 @@ export function buildMemberCommandRequest(
         displayName: command.displayName,
         role: command.role,
         configuredSharedRoomIds: command.configuredSharedRoomIds,
+        configuredCapabilityIds: command.configuredCapabilityIds,
       },
     };
   }
