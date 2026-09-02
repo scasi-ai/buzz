@@ -37,7 +37,7 @@ function snapshot(overrides = {}) {
       {
         roomId: "room-photos",
         displayName: "Photo planning",
-        kind: "SHARED",
+        kind: "GROUP",
       },
     ],
     sharedCapabilities: [

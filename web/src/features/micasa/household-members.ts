@@ -17,7 +17,7 @@ export type PersonalAgentReadiness =
 export type SharedRoom = {
   roomId: string;
   displayName: string;
-  kind: "HOUSEHOLD" | "SHARED";
+  kind: "HOUSEHOLD" | "GROUP";
 };
 export type SharedCapability = {
   capabilityId: string;
@@ -281,11 +281,7 @@ function parseRoom(value: unknown, index: number): SharedRoom {
   return {
     roomId: ref(record, "roomId", label),
     displayName: text(record, "displayName", label, 120),
-    kind: choice(
-      record.kind,
-      ["HOUSEHOLD", "SHARED"] as const,
-      `${label}.kind`,
-    ),
+    kind: choice(record.kind, ["HOUSEHOLD", "GROUP"] as const, `${label}.kind`),
   };
 }
 function parseCapability(value: unknown, index: number): SharedCapability {

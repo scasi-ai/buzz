@@ -796,7 +796,7 @@ test("Head of Household can suspend a member with verified lifecycle readback", 
       {
         roomId: "room-photos",
         displayName: "Photo planning",
-        kind: "SHARED",
+        kind: "GROUP",
       },
     ],
     sharedCapabilities: [
