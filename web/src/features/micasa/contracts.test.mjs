@@ -5,9 +5,53 @@ import {
   MiCasaContractError,
   parseGroupHouseholdAgentMutation,
   parseGroupHouseholdAgentSettings,
+  parseInvitationAcceptance,
   parseMiCasaBootstrap,
   parseMiCasaLogout,
 } from "./contracts.ts";
+
+test("invitation acceptance reserves onboarding without preactivating Buzz", () => {
+  const claimId = `member-onboarding:${"8".repeat(64)}`;
+  assert.deepEqual(
+    parseInvitationAcceptance({
+      state: "ONBOARDING_REQUIRED",
+      claimId,
+      membershipState: "PENDING_ONBOARDING",
+      personalAgentReserved: true,
+      buzzAccessActive: false,
+      destinationPath: `/onboarding/member/${claimId}`,
+    }),
+    {
+      state: "ONBOARDING_REQUIRED",
+      claimId,
+      membershipState: "PENDING_ONBOARDING",
+      personalAgentReserved: true,
+      buzzAccessActive: false,
+      destinationPath: `/onboarding/member/${claimId}`,
+    },
+  );
+});
+
+test("invitation acceptance rejects premature or contradictory activation", () => {
+  const claimId = `member-onboarding:${"8".repeat(64)}`;
+  const base = {
+    state: "ONBOARDING_REQUIRED",
+    claimId,
+    membershipState: "PENDING_ONBOARDING",
+    personalAgentReserved: true,
+    buzzAccessActive: false,
+    destinationPath: `/onboarding/member/${claimId}`,
+  };
+  for (const value of [
+    { ...base, buzzAccessActive: true },
+    { ...base, membershipState: "ACTIVE" },
+    { ...base, personalAgentReserved: false },
+    { ...base, destinationPath: "/household" },
+    { ...base, relayHost: "internal.example" },
+  ]) {
+    assert.throws(() => parseInvitationAcceptance(value), MiCasaContractError);
+  }
+});
 
 const viewerId = `tenant-member:${"1".repeat(64)}`;
 

@@ -13,6 +13,7 @@ import { Route as settingsDotuserDotagentRouteImport } from "./routes/settings.u
 import { Route as settingsDothouseholdDotmembersRouteImport } from "./routes/settings.household.members";
 import { Route as settingsDothouseholdDotappsRouteImport } from "./routes/settings.household.apps";
 import { Route as settingsDothouseholdDotagentRouteImport } from "./routes/settings.household.agent";
+import { Route as onboardingDotmemberDotclaimRouteImport } from "./routes/onboarding.member.$claim";
 
 const onboardingRoute = onboardingRouteImport.update({
   id: "/onboarding",
@@ -57,11 +58,18 @@ const settingsDothouseholdDotagentRoute =
     path: "/settings/household/agent",
     getParentRoute: () => rootRouteImport,
   } as any);
+const onboardingDotmemberDotclaimRoute =
+  onboardingDotmemberDotclaimRouteImport.update({
+    id: "/onboarding/member/$claim",
+    path: "/onboarding/member/$claim",
+    getParentRoute: () => rootRouteImport,
+  } as any);
 
 export interface FileRoutesByFullPath {
   "/": typeof indexRoute;
   "/onboarding": typeof onboardingRoute;
   "/invite/$code": typeof inviteDotcodeRoute;
+  "/onboarding/member/$claim": typeof onboardingDotmemberDotclaimRoute;
   "/settings/household/agent": typeof settingsDothouseholdDotagentRoute;
   "/settings/household/apps": typeof settingsDothouseholdDotappsRoute;
   "/settings/household/members": typeof settingsDothouseholdDotmembersRoute;
@@ -72,6 +80,7 @@ export interface FileRoutesByTo {
   "/": typeof indexRoute;
   "/onboarding": typeof onboardingRoute;
   "/invite/$code": typeof inviteDotcodeRoute;
+  "/onboarding/member/$claim": typeof onboardingDotmemberDotclaimRoute;
   "/settings/household/agent": typeof settingsDothouseholdDotagentRoute;
   "/settings/household/apps": typeof settingsDothouseholdDotappsRoute;
   "/settings/household/members": typeof settingsDothouseholdDotmembersRoute;
@@ -83,6 +92,7 @@ export interface FileRoutesById {
   "/": typeof indexRoute;
   "/onboarding": typeof onboardingRoute;
   "/invite/$code": typeof inviteDotcodeRoute;
+  "/onboarding/member/$claim": typeof onboardingDotmemberDotclaimRoute;
   "/settings/household/agent": typeof settingsDothouseholdDotagentRoute;
   "/settings/household/apps": typeof settingsDothouseholdDotappsRoute;
   "/settings/household/members": typeof settingsDothouseholdDotmembersRoute;
@@ -95,6 +105,7 @@ export interface FileRouteTypes {
     | "/"
     | "/onboarding"
     | "/invite/$code"
+    | "/onboarding/member/$claim"
     | "/settings/household/agent"
     | "/settings/household/apps"
     | "/settings/household/members"
@@ -105,6 +116,7 @@ export interface FileRouteTypes {
     | "/"
     | "/onboarding"
     | "/invite/$code"
+    | "/onboarding/member/$claim"
     | "/settings/household/agent"
     | "/settings/household/apps"
     | "/settings/household/members"
@@ -115,6 +127,7 @@ export interface FileRouteTypes {
     | "/"
     | "/onboarding"
     | "/invite/$code"
+    | "/onboarding/member/$claim"
     | "/settings/household/agent"
     | "/settings/household/apps"
     | "/settings/household/members"
@@ -126,6 +139,7 @@ export interface RootRouteChildren {
   indexRoute: typeof indexRoute;
   onboardingRoute: typeof onboardingRoute;
   inviteDotcodeRoute: typeof inviteDotcodeRoute;
+  onboardingDotmemberDotclaimRoute: typeof onboardingDotmemberDotclaimRoute;
   settingsDothouseholdDotagentRoute: typeof settingsDothouseholdDotagentRoute;
   settingsDothouseholdDotappsRoute: typeof settingsDothouseholdDotappsRoute;
   settingsDothouseholdDotmembersRoute: typeof settingsDothouseholdDotmembersRoute;
@@ -191,6 +205,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof settingsDothouseholdDotagentRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/onboarding/member/$claim": {
+      id: "/onboarding/member/$claim";
+      path: "/onboarding/member/$claim";
+      fullPath: "/onboarding/member/$claim";
+      preLoaderRoute: typeof onboardingDotmemberDotclaimRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
   }
 }
 
@@ -198,6 +219,7 @@ const rootRouteChildren: RootRouteChildren = {
   indexRoute: indexRoute,
   onboardingRoute: onboardingRoute,
   inviteDotcodeRoute: inviteDotcodeRoute,
+  onboardingDotmemberDotclaimRoute: onboardingDotmemberDotclaimRoute,
   settingsDothouseholdDotagentRoute: settingsDothouseholdDotagentRoute,
   settingsDothouseholdDotappsRoute: settingsDothouseholdDotappsRoute,
   settingsDothouseholdDotmembersRoute: settingsDothouseholdDotmembersRoute,

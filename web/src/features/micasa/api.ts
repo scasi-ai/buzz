@@ -3,6 +3,7 @@ import {
   type GroupHouseholdAgentMutation,
   type GroupHouseholdAgentSettings,
   type HouseholdInvitation,
+  type InvitationAcceptance,
   type MiCasaBootstrap,
   type MiCasaLogout,
   parseGroupHouseholdAgentMutation,
@@ -143,7 +144,7 @@ export function loadHouseholdInvitation(
 export async function acceptHouseholdInvitation(
   code: string,
   csrfToken: string,
-): Promise<{ destinationPath: string }> {
+): Promise<InvitationAcceptance> {
   const url = endpoint(
     `${API_PREFIX}/invitations/${encodeURIComponent(code)}/accept`,
   );

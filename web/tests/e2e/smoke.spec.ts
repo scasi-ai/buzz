@@ -277,7 +277,14 @@ test("claiming a Household invitation sends CSRF protection to PA", async ({
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify({ destinationPath: "/" }),
+          body: JSON.stringify({
+            state: "ONBOARDING_REQUIRED",
+            claimId: `member-onboarding:${"1".repeat(64)}`,
+            membershipState: "PENDING_ONBOARDING",
+            personalAgentReserved: true,
+            buzzAccessActive: false,
+            destinationPath: `/onboarding/member/member-onboarding:${"1".repeat(64)}`,
+          }),
         });
         return;
       }
@@ -306,7 +313,7 @@ test("claiming a Household invitation sends CSRF protection to PA", async ({
 
   await page.goto("/invite/family-code");
   await page
-    .getByRole("button", { name: "Accept and set up My Agent" })
+    .getByRole("button", { name: "Accept invitation and set up My Agent" })
     .click();
   await expect.poll(() => claimObserved).toBe(true);
 });
@@ -421,6 +428,181 @@ test("founder onboarding captures named agents without a Buzz community step", a
   await expect(page.locator("body")).not.toContainText(
     /Buzz|community|relay|Fizz|Honey|Pollen/i,
   );
+});
+
+test("invited member chooses their own profile and Personal Agent before Buzz activation", async ({
+  page,
+}) => {
+  const claim = `member-onboarding:${"1".repeat(64)}`;
+  const csrfToken = `csrf_${"2".repeat(48)}`;
+  let profileObserved = false;
+  await page.route("**/api/micasa/v1/onboarding/member/**", async (route) => {
+    if (route.request().method() === "PUT") {
+      profileObserved = true;
+      expect(route.request().headers()["x-csrf-token"]).toBe(csrfToken);
+      expect(route.request().postDataJSON()).toEqual({
+        expectedRevision: 4,
+        humanDisplayName: "Maya Rivera",
+        personalAgent: {
+          displayName: "Orbit",
+          avatarArtifactId: "avatar:member-generated",
+          avatarAltText: "Blue constellation",
+          avatarAccepted: true,
+        },
+      });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          state: "PROVISIONING",
+          operationId: "operation:member-profile",
+          idempotencyKey: "member-profiles:verified",
+          profileRevision: 5,
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        state: "PROFILE_REQUIRED",
+        claimId: claim,
+        householdId: `tenant:${"3".repeat(64)}`,
+        householdName: "River House",
+        inviterName: "Alex Rivera",
+        role: "MEMBER",
+        identityBound: true,
+        profileRevision: 4,
+        roomScope: [
+          {
+            roomId: "room:household",
+            displayName: "Household",
+            kind: "HOUSEHOLD",
+          },
+          {
+            roomId: "room:my-agent",
+            displayName: "My Agent",
+            kind: "PERSONAL_AGENT",
+          },
+        ],
+        capabilityScope: ["messaging", "personal-agent"],
+        consentNotices: ["Your Personal Agent joins rooms that include you."],
+        householdApps: [],
+        householdAppsDisclosureRevision: 1,
+        householdAppsDisclosureDigest: null,
+        householdAppsAcknowledged: false,
+        csrfToken,
+        generatedPersonalAgentAvatar: {
+          artifactId: "avatar:member-generated",
+          mediaType: "image/webp",
+          altText: "Blue constellation",
+          contentSha256: "4".repeat(64),
+        },
+      }),
+    });
+  });
+
+  await page.goto(`/onboarding/member/${claim}`);
+  await expect(
+    page.getByRole("heading", {
+      name: "Name yourself and your Personal Agent",
+    }),
+  ).toBeVisible();
+  await expect(page.getByText(/These are your choices/)).toBeVisible();
+  await page.getByLabel("Your display name").fill("Maya Rivera");
+  await page.getByLabel("My Agent name").fill("Orbit");
+  await page.getByLabel("Use this generated avatar for My Agent").check();
+  await page
+    .getByRole("button", { name: "Save profile and create My Agent" })
+    .click();
+
+  await expect.poll(() => profileObserved).toBe(true);
+  await expect(
+    page.getByRole("heading", { name: "Creating My Agent" }),
+  ).toBeVisible();
+  await expect(page.getByText(/Buzz remains locked/)).toBeVisible();
+});
+
+test("invited member sees Household Apps as read-only before private review", async ({
+  page,
+}) => {
+  const claim = `member-onboarding:${"5".repeat(64)}`;
+  const csrfToken = `csrf_${"6".repeat(48)}`;
+  const disclosureDigest = "7".repeat(64);
+  let acknowledgementObserved = false;
+  const base = {
+    claimId: claim,
+    householdId: `tenant:${"8".repeat(64)}`,
+    householdName: "River House",
+    inviterName: "Alex Rivera",
+    role: "MEMBER",
+    identityBound: true,
+    profileRevision: 5,
+    roomScope: [
+      { roomId: "room:household", displayName: "Household", kind: "HOUSEHOLD" },
+    ],
+    capabilityScope: ["messaging"],
+    consentNotices: ["Household Apps are controlled by the Head of Household."],
+    householdApps: [
+      {
+        serviceId: "google-photos",
+        displayName: "Google Photos",
+        catalogStatus: "AVAILABLE",
+        audience: ["household"],
+        dataSummary: "Shared albums selected for this Household.",
+        actionSummary: "Your Personal Agent may search shared albums.",
+      },
+    ],
+    householdAppsDisclosureRevision: 3,
+    householdAppsDisclosureDigest: disclosureDigest,
+    csrfToken,
+  };
+  await page.route("**/api/micasa/v1/onboarding/member/**", async (route) => {
+    if (route.request().method() === "POST") {
+      acknowledgementObserved = true;
+      expect(route.request().headers()["x-csrf-token"]).toBe(csrfToken);
+      expect(route.request().postDataJSON()).toEqual({
+        expectedDisclosureRevision: 3,
+        disclosureDigest,
+      });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          state: "VERIFIED",
+          operationId: "operation:apps-ack",
+          idempotencyKey: "member-household-apps-ack:verified",
+          readback: {
+            state: "PRIVATE_APPS_REQUIRED",
+            ...base,
+            householdAppsAcknowledged: true,
+          },
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        state: "HOUSEHOLD_APPS_DISCLOSURE_REQUIRED",
+        ...base,
+        householdAppsAcknowledged: false,
+      }),
+    });
+  });
+
+  await page.goto(`/onboarding/member/${claim}`);
+  await expect(
+    page.getByRole("heading", { name: "See what the Household shares" }),
+  ).toBeVisible();
+  await expect(page.getByText("Google Photos")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Connect|Disconnect/ }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Continue to My Apps" }).click();
+  await expect.poll(() => acknowledgementObserved).toBe(true);
 });
 
 test("Household Apps review persists a decision for every applicable card", async ({

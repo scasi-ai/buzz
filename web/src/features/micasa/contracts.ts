@@ -98,6 +98,15 @@ export type HouseholdInvitation = {
   csrfToken?: string;
 };
 
+export type InvitationAcceptance = {
+  state: "ONBOARDING_REQUIRED" | "ALREADY_MEMBER";
+  claimId: string;
+  membershipState: "PENDING_ONBOARDING" | "ACTIVE";
+  personalAgentReserved: true;
+  buzzAccessActive: boolean;
+  destinationPath: string;
+};
+
 export type GroupHouseholdAgentSettings = {
   state: "READY";
   householdId: string;
@@ -779,11 +788,77 @@ export function parseGroupHouseholdAgentMutation(
   };
 }
 
-export function parseInvitationAcceptance(value: unknown): {
-  destinationPath: string;
-} {
+export function parseInvitationAcceptance(
+  value: unknown,
+): InvitationAcceptance {
   const record = object(value, "invitationAcceptance");
+  const expected = [
+    "buzzAccessActive",
+    "claimId",
+    "destinationPath",
+    "membershipState",
+    "personalAgentReserved",
+    "state",
+  ];
+  if (Object.keys(record).sort().join("\0") !== expected.sort().join("\0")) {
+    throw new MiCasaContractError(
+      "invitationAcceptance has an unsupported field.",
+    );
+  }
+  const state = text(record, "state", "invitationAcceptance");
+  if (state !== "ONBOARDING_REQUIRED" && state !== "ALREADY_MEMBER") {
+    throw new MiCasaContractError("invitationAcceptance.state is invalid.");
+  }
+  const claimId = publicReference(record, "claimId", "invitationAcceptance");
+  const membershipState = text(
+    record,
+    "membershipState",
+    "invitationAcceptance",
+  );
+  if (
+    membershipState !== "PENDING_ONBOARDING" &&
+    membershipState !== "ACTIVE"
+  ) {
+    throw new MiCasaContractError(
+      "invitationAcceptance.membershipState is invalid.",
+    );
+  }
+  const personalAgentReserved = boolean(
+    record,
+    "personalAgentReserved",
+    "invitationAcceptance",
+  );
+  const buzzAccessActive = boolean(
+    record,
+    "buzzAccessActive",
+    "invitationAcceptance",
+  );
+  const destinationPath = path(
+    record,
+    "destinationPath",
+    "invitationAcceptance",
+  );
+  if (
+    personalAgentReserved !== true ||
+    (state === "ONBOARDING_REQUIRED" &&
+      (membershipState !== "PENDING_ONBOARDING" ||
+        buzzAccessActive ||
+        destinationPath !== `/onboarding/member/${claimId}`)) ||
+    (state === "ALREADY_MEMBER" &&
+      (membershipState !== "ACTIVE" ||
+        !buzzAccessActive ||
+        destinationPath !== "/household"))
+  ) {
+    throw new MiCasaContractError(
+      "invitationAcceptance authority is contradictory.",
+    );
+  }
   return {
-    destinationPath: path(record, "destinationPath", "invitationAcceptance"),
+    state,
+    claimId,
+    membershipState,
+    personalAgentReserved: true,
+    buzzAccessActive,
+    destinationPath,
   };
 }

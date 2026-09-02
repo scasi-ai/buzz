@@ -127,9 +127,9 @@ export function HouseholdInvitePage({ code }: { code: string }) {
             className="mt-0.5 h-5 w-5 text-slate-600"
           />
           <p className="text-sm leading-6 text-slate-600">
-            Accepting creates Personal-Agent membership and the matching Buzz
-            projection together. It never leaves you with Buzz-only Household
-            access.
+            Accepting reserves your Household membership and Personal Agent,
+            then takes you through profile, Agent, privacy, and app setup. Buzz
+            access stays off until Personal-Agent verifies every required step.
           </p>
         </div>
 
@@ -153,13 +153,14 @@ export function HouseholdInvitePage({ code }: { code: string }) {
               onClick={() => acceptance.mutate()}
             >
               {acceptance.isPending
-                ? "Joining Household…"
-                : "Accept and set up My Agent"}
+                ? "Saving your acceptance…"
+                : "Accept invitation and set up My Agent"}
             </Button>
             {acceptance.isError ? (
               <p className="mt-3 text-sm text-red-700" role="alert">
-                MiCasa could not accept the invitation. Nothing was partially
-                granted; try again.
+                MiCasa could not confirm the claim outcome. Refresh this
+                invitation so Personal-Agent can reconcile it before trying
+                anything again.
               </p>
             ) : null}
           </>
