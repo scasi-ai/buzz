@@ -26,6 +26,7 @@ import {
   saveAppsSettings,
 } from "@/features/micasa/apps-settings";
 import type { MiCasaBootstrap } from "@/features/micasa/contracts";
+import { GoogleCalendarOAuthPanel } from "@/features/micasa/ui/GoogleCalendarOAuthPanel";
 import { Button } from "@/shared/ui/button";
 
 type ReadyMiCasaBootstrap = Extract<MiCasaBootstrap, { state: "READY" }>;
@@ -180,10 +181,12 @@ function DecisionCard({
   card,
   decision,
   setDecision,
+  snapshot,
 }: {
   card: AppsSettingsCard;
   decision: AppsDecision;
   setDecision: (decision: AppsDecision) => void;
+  snapshot: AppsSettingsSnapshot;
 }) {
   const primary = defaultReviewDecision(card);
   return (
@@ -241,7 +244,7 @@ function DecisionCard({
         )}
       </details>
       <div className="mt-4 flex flex-wrap gap-2">
-        {card.connectEnabled && (
+        {card.connectEnabled && card.serviceId !== "google-calendar" && (
           <button
             aria-pressed={decision === "CONNECT_NOW"}
             className={
@@ -280,6 +283,11 @@ function DecisionCard({
           Not applicable
         </button>
       </div>
+      <GoogleCalendarOAuthPanel
+        card={card}
+        setDecision={setDecision}
+        snapshot={snapshot}
+      />
     </article>
   );
 }
@@ -425,6 +433,7 @@ function SettingsEditor({
                       [card.serviceId]: decision,
                     }))
                   }
+                  snapshot={snapshot}
                 />
               ))}
             </div>
