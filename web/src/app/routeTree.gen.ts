@@ -5,15 +5,19 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from "./routes/root";
-import { Route as reposRouteImport } from "./routes/repos";
+import { Route as onboardingRouteImport } from "./routes/onboarding";
 import { Route as indexRouteImport } from "./routes/index";
-import { Route as reposDotrepoIdRouteImport } from "./routes/repos.$repoId";
 import { Route as inviteDotcodeRouteImport } from "./routes/invite.$code";
-import { Route as reposDotrepoIdDotblobDotsplatRouteImport } from "./routes/repos.$repoId.blob.$";
+import { Route as settingsDotuserDotappsRouteImport } from "./routes/settings.user.apps";
+import { Route as settingsDotuserDotagentRouteImport } from "./routes/settings.user.agent";
+import { Route as settingsDothouseholdDotmembersRouteImport } from "./routes/settings.household.members";
+import { Route as settingsDothouseholdDotappsRouteImport } from "./routes/settings.household.apps";
+import { Route as settingsDothouseholdDotagentRouteImport } from "./routes/settings.household.agent";
+import { Route as onboardingDotmemberDotclaimRouteImport } from "./routes/onboarding.member.$claim";
 
-const reposRoute = reposRouteImport.update({
-  id: "/repos",
-  path: "/repos",
+const onboardingRoute = onboardingRouteImport.update({
+  id: "/onboarding",
+  path: "/onboarding",
   getParentRoute: () => rootRouteImport,
 } as any);
 const indexRoute = indexRouteImport.update({
@@ -21,84 +25,135 @@ const indexRoute = indexRouteImport.update({
   path: "/",
   getParentRoute: () => rootRouteImport,
 } as any);
-const reposDotrepoIdRoute = reposDotrepoIdRouteImport.update({
-  id: "/repos/$repoId",
-  path: "/repos/$repoId",
-  getParentRoute: () => rootRouteImport,
-} as any);
 const inviteDotcodeRoute = inviteDotcodeRouteImport.update({
   id: "/invite/$code",
   path: "/invite/$code",
   getParentRoute: () => rootRouteImport,
 } as any);
-const reposDotrepoIdDotblobDotsplatRoute =
-  reposDotrepoIdDotblobDotsplatRouteImport.update({
-    id: "/repos/$repoId/blob/$",
-    path: "/repos/$repoId/blob/$",
+const settingsDotuserDotappsRoute = settingsDotuserDotappsRouteImport.update({
+  id: "/settings/user/apps",
+  path: "/settings/user/apps",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const settingsDotuserDotagentRoute = settingsDotuserDotagentRouteImport.update({
+  id: "/settings/user/agent",
+  path: "/settings/user/agent",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const settingsDothouseholdDotmembersRoute =
+  settingsDothouseholdDotmembersRouteImport.update({
+    id: "/settings/household/members",
+    path: "/settings/household/members",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const settingsDothouseholdDotappsRoute =
+  settingsDothouseholdDotappsRouteImport.update({
+    id: "/settings/household/apps",
+    path: "/settings/household/apps",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const settingsDothouseholdDotagentRoute =
+  settingsDothouseholdDotagentRouteImport.update({
+    id: "/settings/household/agent",
+    path: "/settings/household/agent",
+    getParentRoute: () => rootRouteImport,
+  } as any);
+const onboardingDotmemberDotclaimRoute =
+  onboardingDotmemberDotclaimRouteImport.update({
+    id: "/onboarding/member/$claim",
+    path: "/onboarding/member/$claim",
     getParentRoute: () => rootRouteImport,
   } as any);
 
 export interface FileRoutesByFullPath {
   "/": typeof indexRoute;
-  "/repos": typeof reposRoute;
+  "/onboarding": typeof onboardingRoute;
   "/invite/$code": typeof inviteDotcodeRoute;
-  "/repos/$repoId": typeof reposDotrepoIdRoute;
-  "/repos/$repoId/blob/$": typeof reposDotrepoIdDotblobDotsplatRoute;
+  "/onboarding/member/$claim": typeof onboardingDotmemberDotclaimRoute;
+  "/settings/household/agent": typeof settingsDothouseholdDotagentRoute;
+  "/settings/household/apps": typeof settingsDothouseholdDotappsRoute;
+  "/settings/household/members": typeof settingsDothouseholdDotmembersRoute;
+  "/settings/user/agent": typeof settingsDotuserDotagentRoute;
+  "/settings/user/apps": typeof settingsDotuserDotappsRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof indexRoute;
-  "/repos": typeof reposRoute;
+  "/onboarding": typeof onboardingRoute;
   "/invite/$code": typeof inviteDotcodeRoute;
-  "/repos/$repoId": typeof reposDotrepoIdRoute;
-  "/repos/$repoId/blob/$": typeof reposDotrepoIdDotblobDotsplatRoute;
+  "/onboarding/member/$claim": typeof onboardingDotmemberDotclaimRoute;
+  "/settings/household/agent": typeof settingsDothouseholdDotagentRoute;
+  "/settings/household/apps": typeof settingsDothouseholdDotappsRoute;
+  "/settings/household/members": typeof settingsDothouseholdDotmembersRoute;
+  "/settings/user/agent": typeof settingsDotuserDotagentRoute;
+  "/settings/user/apps": typeof settingsDotuserDotappsRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   "/": typeof indexRoute;
-  "/repos": typeof reposRoute;
+  "/onboarding": typeof onboardingRoute;
   "/invite/$code": typeof inviteDotcodeRoute;
-  "/repos/$repoId": typeof reposDotrepoIdRoute;
-  "/repos/$repoId/blob/$": typeof reposDotrepoIdDotblobDotsplatRoute;
+  "/onboarding/member/$claim": typeof onboardingDotmemberDotclaimRoute;
+  "/settings/household/agent": typeof settingsDothouseholdDotagentRoute;
+  "/settings/household/apps": typeof settingsDothouseholdDotappsRoute;
+  "/settings/household/members": typeof settingsDothouseholdDotmembersRoute;
+  "/settings/user/agent": typeof settingsDotuserDotagentRoute;
+  "/settings/user/apps": typeof settingsDotuserDotappsRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
   fullPaths:
     | "/"
-    | "/repos"
+    | "/onboarding"
     | "/invite/$code"
-    | "/repos/$repoId"
-    | "/repos/$repoId/blob/$";
+    | "/onboarding/member/$claim"
+    | "/settings/household/agent"
+    | "/settings/household/apps"
+    | "/settings/household/members"
+    | "/settings/user/agent"
+    | "/settings/user/apps";
   fileRoutesByTo: FileRoutesByTo;
   to:
     | "/"
-    | "/repos"
+    | "/onboarding"
     | "/invite/$code"
-    | "/repos/$repoId"
-    | "/repos/$repoId/blob/$";
+    | "/onboarding/member/$claim"
+    | "/settings/household/agent"
+    | "/settings/household/apps"
+    | "/settings/household/members"
+    | "/settings/user/agent"
+    | "/settings/user/apps";
   id:
     | "__root__"
     | "/"
-    | "/repos"
+    | "/onboarding"
     | "/invite/$code"
-    | "/repos/$repoId"
-    | "/repos/$repoId/blob/$";
+    | "/onboarding/member/$claim"
+    | "/settings/household/agent"
+    | "/settings/household/apps"
+    | "/settings/household/members"
+    | "/settings/user/agent"
+    | "/settings/user/apps";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
   indexRoute: typeof indexRoute;
-  reposRoute: typeof reposRoute;
+  onboardingRoute: typeof onboardingRoute;
   inviteDotcodeRoute: typeof inviteDotcodeRoute;
-  reposDotrepoIdRoute: typeof reposDotrepoIdRoute;
-  reposDotrepoIdDotblobDotsplatRoute: typeof reposDotrepoIdDotblobDotsplatRoute;
+  onboardingDotmemberDotclaimRoute: typeof onboardingDotmemberDotclaimRoute;
+  settingsDothouseholdDotagentRoute: typeof settingsDothouseholdDotagentRoute;
+  settingsDothouseholdDotappsRoute: typeof settingsDothouseholdDotappsRoute;
+  settingsDothouseholdDotmembersRoute: typeof settingsDothouseholdDotmembersRoute;
+  settingsDotuserDotagentRoute: typeof settingsDotuserDotagentRoute;
+  settingsDotuserDotappsRoute: typeof settingsDotuserDotappsRoute;
 }
 
 declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
-    "/repos": {
-      id: "/repos";
-      path: "/repos";
-      fullPath: "/repos";
-      preLoaderRoute: typeof reposRouteImport;
+    "/onboarding": {
+      id: "/onboarding";
+      path: "/onboarding";
+      fullPath: "/onboarding";
+      preLoaderRoute: typeof onboardingRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/": {
@@ -108,13 +163,6 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof indexRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/repos/$repoId": {
-      id: "/repos/$repoId";
-      path: "/repos/$repoId";
-      fullPath: "/repos/$repoId";
-      preLoaderRoute: typeof reposDotrepoIdRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
     "/invite/$code": {
       id: "/invite/$code";
       path: "/invite/$code";
@@ -122,11 +170,46 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof inviteDotcodeRouteImport;
       parentRoute: typeof rootRouteImport;
     };
-    "/repos/$repoId/blob/$": {
-      id: "/repos/$repoId/blob/$";
-      path: "/repos/$repoId/blob/$";
-      fullPath: "/repos/$repoId/blob/$";
-      preLoaderRoute: typeof reposDotrepoIdDotblobDotsplatRouteImport;
+    "/settings/user/apps": {
+      id: "/settings/user/apps";
+      path: "/settings/user/apps";
+      fullPath: "/settings/user/apps";
+      preLoaderRoute: typeof settingsDotuserDotappsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/settings/user/agent": {
+      id: "/settings/user/agent";
+      path: "/settings/user/agent";
+      fullPath: "/settings/user/agent";
+      preLoaderRoute: typeof settingsDotuserDotagentRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/settings/household/members": {
+      id: "/settings/household/members";
+      path: "/settings/household/members";
+      fullPath: "/settings/household/members";
+      preLoaderRoute: typeof settingsDothouseholdDotmembersRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/settings/household/apps": {
+      id: "/settings/household/apps";
+      path: "/settings/household/apps";
+      fullPath: "/settings/household/apps";
+      preLoaderRoute: typeof settingsDothouseholdDotappsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/settings/household/agent": {
+      id: "/settings/household/agent";
+      path: "/settings/household/agent";
+      fullPath: "/settings/household/agent";
+      preLoaderRoute: typeof settingsDothouseholdDotagentRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/onboarding/member/$claim": {
+      id: "/onboarding/member/$claim";
+      path: "/onboarding/member/$claim";
+      fullPath: "/onboarding/member/$claim";
+      preLoaderRoute: typeof onboardingDotmemberDotclaimRouteImport;
       parentRoute: typeof rootRouteImport;
     };
   }
@@ -134,10 +217,14 @@ declare module "@tanstack/react-router" {
 
 const rootRouteChildren: RootRouteChildren = {
   indexRoute: indexRoute,
-  reposRoute: reposRoute,
+  onboardingRoute: onboardingRoute,
   inviteDotcodeRoute: inviteDotcodeRoute,
-  reposDotrepoIdRoute: reposDotrepoIdRoute,
-  reposDotrepoIdDotblobDotsplatRoute: reposDotrepoIdDotblobDotsplatRoute,
+  onboardingDotmemberDotclaimRoute: onboardingDotmemberDotclaimRoute,
+  settingsDothouseholdDotagentRoute: settingsDothouseholdDotagentRoute,
+  settingsDothouseholdDotappsRoute: settingsDothouseholdDotappsRoute,
+  settingsDothouseholdDotmembersRoute: settingsDothouseholdDotmembersRoute,
+  settingsDotuserDotagentRoute: settingsDotuserDotagentRoute,
+  settingsDotuserDotappsRoute: settingsDotuserDotappsRoute,
 };
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -23,7 +23,7 @@ use crate::config::DedupMode;
 /// Maximum events queued per channel before oldest events are dropped.
 const MAX_PENDING_PER_CHANNEL: usize = 500;
 
-/// Maximum events drained into a single batch.
+/// Hard ceiling for events drained into a single batch.
 const MAX_BATCH_EVENTS: usize = 50;
 
 /// Maximum retry attempts before a batch is dead-lettered.
@@ -145,6 +145,9 @@ pub struct EventQueue {
     /// Per-channel retry attempt counter for exponential backoff / dead-lettering.
     retry_counts: HashMap<Uuid, u32>,
     dedup_mode: DedupMode,
+    /// Validated per-runtime batch cap. MiCasa uses one for exact PA dispatch
+    /// and response correlation; the Buzz default remains 50.
+    max_batch_events: usize,
     /// Events from cancelled batches, keyed by channel. Merged into the next
     /// `FlushBatch` for that channel as `cancelled_events` so `format_prompt()`
     /// can produce annotated "[Previous request — interrupted]" sections.
@@ -185,11 +188,22 @@ impl EventQueue {
             retry_after: HashMap::new(),
             retry_counts: HashMap::new(),
             dedup_mode,
+            max_batch_events: MAX_BATCH_EVENTS,
             cancelled_batches: HashMap::new(),
             cancel_reasons: HashMap::new(),
             withheld_native_steer: HashMap::new(),
             in_flight_deadline: Duration::from_secs(DEFAULT_IN_FLIGHT_DEADLINE_SECS),
         }
+    }
+
+    /// Set the already CLI-validated prompt batch cap.
+    pub fn with_max_batch_events(mut self, max_batch_events: usize) -> Self {
+        assert!(
+            (1..=MAX_BATCH_EVENTS).contains(&max_batch_events),
+            "max_batch_events must be validated in 1..=50",
+        );
+        self.max_batch_events = max_batch_events;
+        self
     }
 
     /// Set the in-flight backstop deadline from the configured max turn
@@ -255,7 +269,7 @@ impl EventQueue {
     ///
     /// Returns `None` if all non-in-flight, non-throttled queues are empty.
     /// Otherwise picks the channel with the oldest pending event (FIFO fairness
-    /// across channels), drains ALL events for that channel into a single batch,
+    /// across channels), drains up to the configured batch cap for that channel,
     /// inserts into `in_flight_channels`, and returns the batch.
     pub fn flush_next(&mut self) -> Option<FlushBatch> {
         let now = Instant::now();
@@ -332,9 +346,9 @@ impl EventQueue {
             }
         };
 
-        // Drain up to MAX_BATCH_EVENTS; leave any remainder in the queue.
+        // Drain up to the validated runtime cap; leave any remainder queued.
         let queue = self.queues.entry(channel_id).or_default();
-        let drain_count = MAX_BATCH_EVENTS.min(queue.len());
+        let drain_count = self.max_batch_events.min(queue.len());
         let mut events: Vec<BatchEvent> = queue
             .drain(..drain_count)
             .map(|qe| BatchEvent {
@@ -1907,6 +1921,33 @@ mod tests {
         // All drained.
         assert_eq!(pending_count(&q), 0);
         assert_eq!(q.queues.len(), 0);
+    }
+
+    #[test]
+    fn test_single_event_batch_mode_never_coalesces_pa_invocations() {
+        let mut q = EventQueue::new(DedupMode::Queue).with_max_batch_events(1);
+        let ch = Uuid::new_v4();
+
+        q.push(make_queued(ch, "first"));
+        q.push(make_queued(ch, "second"));
+        q.push(make_queued(ch, "third"));
+
+        let first = q.flush_next().expect("first single-event batch");
+        assert_eq!(first.events.len(), 1);
+        assert_eq!(first.events[0].event.content, "first");
+        assert_eq!(pending_count(&q), 2);
+
+        q.mark_complete(ch);
+        let second = q.flush_next().expect("second single-event batch");
+        assert_eq!(second.events.len(), 1);
+        assert_eq!(second.events[0].event.content, "second");
+        assert_eq!(pending_count(&q), 1);
+
+        q.mark_complete(ch);
+        let third = q.flush_next().expect("third single-event batch");
+        assert_eq!(third.events.len(), 1);
+        assert_eq!(third.events[0].event.content, "third");
+        assert_eq!(pending_count(&q), 0);
     }
 
     #[test]

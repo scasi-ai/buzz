@@ -30,6 +30,11 @@ pub(crate) const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 900;
 /// Override via `--max-turn-duration` / `BUZZ_ACP_MAX_TURN_DURATION`.
 pub(crate) const DEFAULT_MAX_TURN_DURATION_SECS: u64 = 7200;
 
+/// Default and hard ceiling for the number of relay events in one ACP prompt.
+/// MiCasa sets this to one so every PA outbox invocation has one exact reply
+/// correlation target; ordinary Buzz harnesses retain the existing batch of 50.
+pub(crate) const DEFAULT_MAX_BATCH_EVENTS: u32 = 50;
+
 /// Upper bound for `max_turn_duration` (7 days). Any higher is operationally
 /// meaningless and risks arithmetic overflow when deriving the in-flight
 /// deadline (`max_turn_duration + IN_FLIGHT_DEADLINE_BUFFER_SECS`).
@@ -299,6 +304,11 @@ pub struct CliArgs {
           value_parser = clap::value_parser!(u32).range(1..=32))]
     pub agents: u32,
 
+    /// Maximum relay events coalesced into one ACP prompt.
+    #[arg(long, env = "BUZZ_ACP_MAX_BATCH_EVENTS", default_value_t = DEFAULT_MAX_BATCH_EVENTS,
+          value_parser = clap::value_parser!(u32).range(1..=50))]
+    pub max_batch_events: u32,
+
     /// Seconds between heartbeat prompts. 0 = disabled.
     #[arg(long, env = "BUZZ_ACP_HEARTBEAT_INTERVAL", default_value_t = 0)]
     pub heartbeat_interval: u64,
@@ -524,6 +534,7 @@ pub struct Config {
     pub idle_timeout_secs: u64,
     pub max_turn_duration_secs: u64,
     pub agents: u32,
+    pub max_batch_events: usize,
     pub heartbeat_interval_secs: u64,
     /// Seconds between per-turn liveness pings. 0 = disabled. Distinct from
     /// `heartbeat_interval_secs` (agent self-prompting) — this is the desktop
@@ -1100,6 +1111,7 @@ impl Config {
             idle_timeout_secs,
             max_turn_duration_secs,
             agents: args.agents,
+            max_batch_events: args.max_batch_events as usize,
             heartbeat_interval_secs: heartbeat_interval,
             turn_liveness_secs,
             heartbeat_prompt,
@@ -1164,7 +1176,7 @@ impl Config {
             format!(" allowed_respond_to=[{}]", modes.join(","))
         };
         format!(
-            "relay={} pubkey={} agent_cmd={} {} mcp_cmd={} idle_timeout={}s max_turn={}s agents={} heartbeat={}s subscribe={:?} dedup={:?} meh={:?} ignore_self={} context_limit={} max_turns_per_session={} presence={} typing={} memory={} model={} permission_mode={} {}{}",
+            "relay={} pubkey={} agent_cmd={} {} mcp_cmd={} idle_timeout={}s max_turn={}s agents={} max_batch_events={} heartbeat={}s subscribe={:?} dedup={:?} meh={:?} ignore_self={} context_limit={} max_turns_per_session={} presence={} typing={} memory={} model={} permission_mode={} {}{}",
             self.relay_url,
             self.keys.public_key().to_hex(),
             self.agent_command,
@@ -1173,6 +1185,7 @@ impl Config {
             self.idle_timeout_secs,
             self.max_turn_duration_secs,
             self.agents,
+            self.max_batch_events,
             self.heartbeat_interval_secs,
             self.subscribe_mode,
             self.dedup_mode,
@@ -1481,6 +1494,7 @@ mod tests {
             idle_timeout_secs: DEFAULT_IDLE_TIMEOUT_SECS,
             max_turn_duration_secs: DEFAULT_MAX_TURN_DURATION_SECS,
             agents: 1,
+            max_batch_events: DEFAULT_MAX_BATCH_EVENTS as usize,
             heartbeat_interval_secs: 0,
             turn_liveness_secs: 10,
             heartbeat_prompt: None,
@@ -2225,6 +2239,32 @@ channels = "ALL"
             "120",
         ]);
         assert_eq!(configured.exit_after_inactivity, 120);
+    }
+
+    #[test]
+    fn max_batch_events_defaults_to_50_and_accepts_single_event_mode() {
+        let key = "0".repeat(64);
+        let default = CliArgs::parse_from(["buzz-acp", "--private-key", &key]);
+        assert_eq!(default.max_batch_events, DEFAULT_MAX_BATCH_EVENTS);
+
+        let single =
+            CliArgs::parse_from(["buzz-acp", "--private-key", &key, "--max-batch-events", "1"]);
+        assert_eq!(single.max_batch_events, 1);
+    }
+
+    #[test]
+    fn max_batch_events_rejects_zero_and_values_above_50() {
+        let key = "0".repeat(64);
+        for invalid in ["0", "51"] {
+            assert!(CliArgs::try_parse_from([
+                "buzz-acp",
+                "--private-key",
+                &key,
+                "--max-batch-events",
+                invalid,
+            ])
+            .is_err());
+        }
     }
 
     #[test]

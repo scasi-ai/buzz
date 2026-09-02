@@ -27,6 +27,8 @@ pub mod invite_token;
 pub mod mesh_boot;
 /// Prometheus metrics: recorder, upkeep, HTTP middleware.
 pub mod metrics;
+/// Trusted Personal-Agent gateway authorization for the public MiCasa NIP-42 alias.
+pub mod micasa_gateway;
 /// NIP-11 relay information document.
 pub mod nip11;
 /// NIP-01 client/relay message parsing.

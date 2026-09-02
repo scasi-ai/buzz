@@ -5,10 +5,14 @@
 //! - `private`: hidden, invite-only
 
 use chrono::{DateTime, Utc};
+use nostr::{EventBuilder, Kind, Tag};
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
 
 use crate::error::{DbError, Result};
+use buzz_core::kind::{
+    KIND_NIP29_GROUP_ADMINS, KIND_NIP29_GROUP_MEMBERS, KIND_NIP29_GROUP_METADATA,
+};
 use buzz_core::CommunityId;
 
 // Re-export the canonical enum definitions from buzz-core.
@@ -80,6 +84,51 @@ pub struct MemberRecord {
     pub invited_by: Option<Vec<u8>>,
     /// When the member was removed, if applicable.
     pub removed_at: Option<DateTime<Utc>>,
+}
+
+/// Result of the deployment operator's create-only system-room transaction.
+///
+/// The result deliberately does not return an existing channel: callers must
+/// observe it separately and compare the complete locked room shape instead
+/// of treating a UUID collision as successful convergence.
+#[derive(Debug, Clone)]
+pub enum CreateOperatorChannelWithOwnerResult {
+    /// The channel, its sole initial owner, and relay-signed discovery
+    /// snapshots were created in one transaction.
+    Created(Box<ChannelRecord>),
+    /// A channel with the requested UUID already exists in this community.
+    ChannelExists,
+    /// The requested initial owner was not a current community owner when the
+    /// transaction acquired the same owner-row locks used by ownership transfer.
+    OwnerNotCommunityOwner,
+}
+
+/// A membership projection retained behind the channel roster lock until the
+/// relay-authored NIP-29 member snapshot is replaced and committed.
+pub struct OperatorChannelMemberProjection {
+    /// Exact active roster after the create-only transaction.
+    pub snapshot: LockedMemberSnapshot,
+    /// `true` only when the transaction inserted the requested bot rows.
+    pub changed: bool,
+}
+
+/// Result of the deployment operator's create-only system-room roster write.
+///
+/// The write accepts only the original sole founder-owner roster or the exact
+/// already-projected target. It never adds to, removes from, or repairs a
+/// different roster.
+pub enum ProjectOperatorChannelMembersResult {
+    /// The target roster is held in one transaction so its signed kind:39002
+    /// snapshot can be stored before commit.
+    Ready(Box<OperatorChannelMemberProjection>),
+    /// The deterministic channel does not exist in this community.
+    ChannelNotFound,
+    /// The channel is not the exact locked PA system-room shape.
+    ChannelShapeConflict,
+    /// The requested founder is no longer a current community owner.
+    OwnerNotCommunityOwner,
+    /// The channel has historical, partial, substituted, or extra membership.
+    RosterConflict,
 }
 
 /// Creates a new channel, bootstraps the creator as owner, and returns the record.
@@ -265,6 +314,403 @@ pub async fn create_channel_with_id(
     let record = row_to_channel_record(row)?;
     tx.commit().await?;
     Ok((record, was_created))
+}
+
+/// Atomically creates a locked private stream channel for the current
+/// community owner.
+///
+/// This is the database boundary for deployment-operator provisioning of
+/// MiCasa's required `Household` and `My Agent` rooms. It locks every current
+/// community-owner row with `FOR UPDATE`, exactly as ownership transfer does,
+/// validates that `initial_owner` is one of those owners, and creates the
+/// channel, initial channel-owner membership, and relay-signed NIP-29
+/// discovery snapshots in the same transaction.
+/// Consequently an ownership transfer and system-room creation have a single
+/// serial order: a stale owner can never pass a preflight check and create a
+/// channel after losing community ownership.
+///
+/// Existing channels are never read, modified, or converged by this method.
+pub async fn create_operator_channel_with_owner(
+    pool: &PgPool,
+    community_id: CommunityId,
+    channel_id: Uuid,
+    name: &str,
+    initial_owner: &[u8],
+    relay_keypair: &nostr::Keys,
+) -> Result<CreateOperatorChannelWithOwnerResult> {
+    if initial_owner.len() != 32 {
+        return Err(DbError::InvalidData(format!(
+            "pubkey must be 32 bytes, got {}",
+            initial_owner.len()
+        )));
+    }
+    if channel_id.is_nil() {
+        return Err(DbError::InvalidData(
+            "channel_id must not be nil (reserved for global fan-out)".into(),
+        ));
+    }
+
+    let name = buzz_core::channel::canonical_channel_name(name);
+    if name.trim().is_empty() {
+        return Err(DbError::InvalidData("channel name is required".into()));
+    }
+    let owner_hex = hex::encode(initial_owner);
+    let mut tx = pool.begin().await?;
+
+    // Ownership transfer locks this same complete owner set before changing
+    // any role. Matching that lock boundary closes both transfer-away and
+    // transfer-to races without putting a private key in the operator service.
+    let current_owners: Vec<String> = sqlx::query_scalar(
+        "SELECT pubkey FROM relay_members \
+         WHERE community_id = $1 AND role = 'owner' \
+         ORDER BY pubkey FOR UPDATE",
+    )
+    .bind(community_id.as_uuid())
+    .fetch_all(&mut *tx)
+    .await?;
+    if !current_owners.iter().any(|pubkey| pubkey == &owner_hex) {
+        tx.rollback().await?;
+        return Ok(CreateOperatorChannelWithOwnerResult::OwnerNotCommunityOwner);
+    }
+
+    let rows_affected = sqlx::query(
+        r#"
+        INSERT INTO channels
+            (id, community_id, name, channel_type, visibility, created_by)
+        VALUES ($1, $2, $3, 'stream', 'private', $4)
+        ON CONFLICT (community_id, id) DO NOTHING
+        "#,
+    )
+    .bind(channel_id)
+    .bind(community_id.as_uuid())
+    .bind(name)
+    .bind(initial_owner)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    if rows_affected == 0 {
+        tx.rollback().await?;
+        return Ok(CreateOperatorChannelWithOwnerResult::ChannelExists);
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO channel_members (community_id, channel_id, pubkey, role, invited_by)
+        VALUES ($1, $2, $3, 'owner', $3)
+        "#,
+    )
+    .bind(community_id.as_uuid())
+    .bind(channel_id)
+    .bind(initial_owner)
+    .execute(&mut *tx)
+    .await?;
+
+    let group_id = channel_id.to_string();
+    let discovery = operator_channel_discovery_events(&group_id, name, &owner_hex, relay_keypair)?;
+    for event in &discovery {
+        let created_at_seconds = event.created_at.as_secs() as i64;
+        let created_at = DateTime::from_timestamp(created_at_seconds, 0)
+            .ok_or(DbError::InvalidTimestamp(created_at_seconds))?;
+        let signature = event.sig.serialize();
+        let tags = serde_json::to_value(&event.tags)?;
+        sqlx::query(
+            "INSERT INTO events \
+             (community_id, id, pubkey, created_at, kind, tags, content, sig, \
+              received_at, channel_id, d_tag) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10)",
+        )
+        .bind(community_id.as_uuid())
+        .bind(event.id.as_bytes().as_slice())
+        .bind(event.pubkey.to_bytes().as_slice())
+        .bind(created_at)
+        .bind(event.kind.as_u16() as i32)
+        .bind(tags)
+        .bind(&event.content)
+        .bind(signature.as_slice())
+        .bind(channel_id)
+        .bind(&group_id)
+        .execute(&mut *tx)
+        .await?;
+        crate::insert_mentions_in_transaction(&mut tx, community_id, event, Some(channel_id))
+            .await?;
+    }
+
+    let row = sqlx::query(
+        r#"
+        SELECT id, name, channel_type::text AS channel_type, visibility::text AS visibility,
+               description, canvas,
+               created_by, created_at, updated_at, archived_at, deleted_at,
+               nip29_group_id, topic_required, max_members,
+               topic, topic_set_by, topic_set_at,
+               purpose, purpose_set_by, purpose_set_at,
+               ttl_seconds, ttl_deadline
+        FROM channels WHERE community_id = $1 AND id = $2
+        "#,
+    )
+    .bind(community_id.as_uuid())
+    .bind(channel_id)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    let record = row_to_channel_record(row)?;
+    tx.commit().await?;
+    Ok(CreateOperatorChannelWithOwnerResult::Created(Box::new(
+        record,
+    )))
+}
+
+/// Project the exact initial PA Agent roster into one locked system room.
+///
+/// The transaction is intentionally left open in the successful result. The
+/// relay layer must replace the relay-authored kind:39002 event through the
+/// returned [`LockedMemberSnapshot`] and release it. This makes the bot rows
+/// and their signed discovery snapshot one atomic database outcome.
+pub async fn project_operator_channel_members(
+    pool: &PgPool,
+    community_id: CommunityId,
+    channel_id: Uuid,
+    expected_name: &str,
+    owner_pubkey: &[u8],
+    agent_pubkeys: &[Vec<u8>],
+    relay_pubkey: &[u8],
+) -> Result<ProjectOperatorChannelMembersResult> {
+    if owner_pubkey.len() != 32
+        || relay_pubkey.len() != 32
+        || agent_pubkeys.is_empty()
+        || agent_pubkeys.len() > 2
+        || agent_pubkeys.iter().any(|value| value.len() != 32)
+    {
+        return Err(DbError::InvalidData(
+            "operator member projection has invalid public keys".into(),
+        ));
+    }
+    if channel_id.is_nil() || !matches!(expected_name, "Household" | "My Agent") {
+        return Err(DbError::InvalidData(
+            "operator member projection has invalid room coordinate".into(),
+        ));
+    }
+    let mut unique_agents = agent_pubkeys.to_vec();
+    unique_agents.sort();
+    unique_agents.dedup();
+    if unique_agents.len() != agent_pubkeys.len()
+        || unique_agents
+            .iter()
+            .any(|pubkey| pubkey.as_slice() == owner_pubkey)
+    {
+        return Err(DbError::InvalidData(
+            "operator member projection public keys must be distinct".into(),
+        ));
+    }
+
+    let mut tx = pool.begin().await?;
+
+    // Use the same complete owner-row lock as ownership transfer and operator
+    // room creation. A founder who loses Head/community ownership cannot race
+    // a delayed roster projection into the old Household.
+    let owner_hex = hex::encode(owner_pubkey);
+    let current_owners: Vec<String> = sqlx::query_scalar(
+        "SELECT pubkey FROM relay_members \
+         WHERE community_id = $1 AND role = 'owner' \
+         ORDER BY pubkey FOR UPDATE",
+    )
+    .bind(community_id.as_uuid())
+    .fetch_all(&mut *tx)
+    .await?;
+    if !current_owners.iter().any(|pubkey| pubkey == &owner_hex) {
+        tx.rollback().await?;
+        return Ok(ProjectOperatorChannelMembersResult::OwnerNotCommunityOwner);
+    }
+
+    // Match the canonical kind:39002 writer lock order, then keep the
+    // membership lock through row creation and signed snapshot replacement.
+    let replacement_lock = crate::replaceable::event_replacement_lock_key(
+        community_id,
+        KIND_NIP29_GROUP_MEMBERS as i32,
+        relay_pubkey,
+        Some(channel_id.as_bytes()),
+    );
+    sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(replacement_lock)
+        .execute(&mut *tx)
+        .await?;
+    acquire_channel_membership_lock(&mut tx, community_id, channel_id).await?;
+
+    let row = sqlx::query(
+        r#"
+        SELECT id, name, channel_type::text AS channel_type, visibility::text AS visibility,
+               description, canvas,
+               created_by, created_at, updated_at, archived_at, deleted_at,
+               nip29_group_id, topic_required, max_members,
+               topic, topic_set_by, topic_set_at,
+               purpose, purpose_set_by, purpose_set_at,
+               ttl_seconds, ttl_deadline
+        FROM channels
+        WHERE community_id = $1 AND id = $2
+        FOR UPDATE
+        "#,
+    )
+    .bind(community_id.as_uuid())
+    .bind(channel_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(row) = row else {
+        tx.rollback().await?;
+        return Ok(ProjectOperatorChannelMembersResult::ChannelNotFound);
+    };
+    let channel = row_to_channel_record(row)?;
+    if channel.name != expected_name
+        || channel.channel_type != "stream"
+        || channel.visibility != "private"
+        || channel.created_by.as_slice() != owner_pubkey
+        || channel.archived_at.is_some()
+        || channel.deleted_at.is_some()
+    {
+        tx.rollback().await?;
+        return Ok(ProjectOperatorChannelMembersResult::ChannelShapeConflict);
+    }
+
+    // Include removed rows in the precondition. A soft-removed or previously
+    // substituted Agent is historical drift, not an invitation to resurrect
+    // or converge that membership through the operator path.
+    let rows = sqlx::query(
+        r#"
+        SELECT channel_id, pubkey, role::text AS role, joined_at, invited_by, removed_at
+        FROM channel_members
+        WHERE community_id = $1 AND channel_id = $2
+        ORDER BY pubkey ASC
+        "#,
+    )
+    .bind(community_id.as_uuid())
+    .bind(channel_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    let existing = rows
+        .into_iter()
+        .map(row_to_member_record)
+        .collect::<Result<Vec<_>>>()?;
+    let initial_owner_only = existing.len() == 1
+        && existing[0].pubkey.as_slice() == owner_pubkey
+        && existing[0].role == "owner"
+        && existing[0].invited_by.as_deref() == Some(owner_pubkey)
+        && existing[0].removed_at.is_none();
+    let exact_target = existing.len() == unique_agents.len() + 1
+        && existing.iter().all(|member| {
+            member.removed_at.is_none()
+                && if member.pubkey.as_slice() == owner_pubkey {
+                    member.role == "owner" && member.invited_by.as_deref() == Some(owner_pubkey)
+                } else {
+                    member.role == "bot"
+                        && member.invited_by.as_deref() == Some(owner_pubkey)
+                        && unique_agents.contains(&member.pubkey)
+                }
+        })
+        && unique_agents.iter().all(|agent| {
+            existing
+                .iter()
+                .any(|member| member.pubkey == *agent && member.role == "bot")
+        });
+    if !initial_owner_only && !exact_target {
+        tx.rollback().await?;
+        return Ok(ProjectOperatorChannelMembersResult::RosterConflict);
+    }
+
+    if initial_owner_only {
+        for agent_pubkey in &unique_agents {
+            sqlx::query(
+                "INSERT INTO channel_members \
+                 (community_id, channel_id, pubkey, role, invited_by) \
+                 VALUES ($1, $2, $3, 'bot', $4)",
+            )
+            .bind(community_id.as_uuid())
+            .bind(channel_id)
+            .bind(agent_pubkey)
+            .bind(owner_pubkey)
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
+
+    let rows = sqlx::query(
+        r#"
+        SELECT channel_id, pubkey, role::text AS role, joined_at, invited_by, removed_at
+        FROM channel_members
+        WHERE community_id = $1 AND channel_id = $2 AND removed_at IS NULL
+        ORDER BY joined_at ASC, pubkey ASC
+        "#,
+    )
+    .bind(community_id.as_uuid())
+    .bind(channel_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    let members = rows
+        .into_iter()
+        .map(row_to_member_record)
+        .collect::<Result<Vec<_>>>()?;
+    let snapshot = LockedMemberSnapshot {
+        members,
+        community_id,
+        channel_id,
+        relay_pubkey: relay_pubkey.to_vec(),
+        tx,
+    };
+    Ok(ProjectOperatorChannelMembersResult::Ready(Box::new(
+        OperatorChannelMemberProjection {
+            snapshot,
+            changed: initial_owner_only,
+        },
+    )))
+}
+
+fn operator_discovery_tag(values: &[&str]) -> Result<Tag> {
+    Tag::parse(values.iter().copied()).map_err(|error| {
+        DbError::InvalidData(format!(
+            "failed to construct operator channel discovery tag: {error}"
+        ))
+    })
+}
+
+fn operator_channel_discovery_events(
+    group_id: &str,
+    name: &str,
+    owner_pubkey: &str,
+    relay_keypair: &nostr::Keys,
+) -> Result<[nostr::Event; 3]> {
+    let build = |kind: u32, tags: Vec<Tag>| {
+        EventBuilder::new(Kind::Custom(kind as u16), "")
+            .tags(tags)
+            .sign_with_keys(relay_keypair)
+            .map_err(|error| {
+                DbError::InvalidData(format!(
+                    "failed to sign operator channel discovery event: {error}"
+                ))
+            })
+    };
+    Ok([
+        build(
+            KIND_NIP29_GROUP_METADATA,
+            vec![
+                operator_discovery_tag(&["d", group_id])?,
+                operator_discovery_tag(&["name", name])?,
+                operator_discovery_tag(&["private"])?,
+                operator_discovery_tag(&["closed"])?,
+                operator_discovery_tag(&["t", "stream"])?,
+            ],
+        )?,
+        build(
+            KIND_NIP29_GROUP_ADMINS,
+            vec![
+                operator_discovery_tag(&["d", group_id])?,
+                operator_discovery_tag(&["p", owner_pubkey, "owner"])?,
+            ],
+        )?,
+        build(
+            KIND_NIP29_GROUP_MEMBERS,
+            vec![
+                operator_discovery_tag(&["d", group_id])?,
+                operator_discovery_tag(&["p", owner_pubkey, "", "owner"])?,
+            ],
+        )?,
+    ])
 }
 
 /// Fetches a channel record by `(community_id, id)`. Returns `ChannelNotFound` if missing or deleted.
@@ -1003,6 +1449,28 @@ pub async fn get_members(
         JOIN channels c ON cm.community_id = c.community_id AND cm.channel_id = c.id AND c.deleted_at IS NULL
         WHERE cm.community_id = $1 AND cm.channel_id = $2 AND cm.removed_at IS NULL
         ORDER BY cm.joined_at ASC
+        "#,
+    )
+    .bind(community_id.as_uuid())
+    .bind(channel_id)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter().map(row_to_member_record).collect()
+}
+
+/// Return all current and soft-removed rows for deployment-operator exact
+/// readback. Ordinary channel consumers should use [`get_members`].
+pub async fn get_operator_member_rows(
+    pool: &PgPool,
+    community_id: CommunityId,
+    channel_id: Uuid,
+) -> Result<Vec<MemberRecord>> {
+    let rows = sqlx::query(
+        r#"
+        SELECT channel_id, pubkey, role::text AS role, joined_at, invited_by, removed_at
+        FROM channel_members
+        WHERE community_id = $1 AND channel_id = $2
+        ORDER BY pubkey ASC
         "#,
     )
     .bind(community_id.as_uuid())
@@ -1932,6 +2400,19 @@ mod tests {
         id
     }
 
+    async fn add_test_relay_member(pool: &PgPool, community_id: Uuid, pubkey: &[u8], role: &str) {
+        sqlx::query(
+            "INSERT INTO relay_members (community_id, pubkey, role, added_by) \
+             VALUES ($1, $2, $3, NULL)",
+        )
+        .bind(community_id)
+        .bind(hex::encode(pubkey))
+        .bind(role)
+        .execute(pool)
+        .await
+        .expect("insert test relay member");
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn create_test_channel(
         pool: &PgPool,
@@ -2005,6 +2486,361 @@ mod tests {
         .execute(pool)
         .await
         .expect("insert channel with fixed id");
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn operator_channel_create_atomically_installs_current_community_owner() {
+        let pool = setup_pool().await;
+        let community_id = make_test_community(&pool).await;
+        let community = CommunityId::from_uuid(community_id);
+        let owner = random_pubkey();
+        let relay_keys = Keys::generate();
+        let channel_id = Uuid::new_v4();
+        add_test_relay_member(&pool, community_id, &owner, "owner").await;
+
+        let result = create_operator_channel_with_owner(
+            &pool,
+            community,
+            channel_id,
+            "Household",
+            &owner,
+            &relay_keys,
+        )
+        .await
+        .expect("create operator channel");
+        let CreateOperatorChannelWithOwnerResult::Created(channel) = result else {
+            panic!("current community owner should create the channel");
+        };
+
+        assert_eq!(channel.id, channel_id);
+        assert_eq!(channel.name, "Household");
+        assert_eq!(channel.channel_type, "stream");
+        assert_eq!(channel.visibility, "private");
+        assert_eq!(channel.created_by, owner);
+        assert_eq!(
+            get_member_role(&pool, community, channel_id, &owner)
+                .await
+                .expect("read channel owner role")
+                .as_deref(),
+            Some("owner")
+        );
+        let discovery_count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM events \
+             WHERE community_id = $1 AND channel_id = $2 AND d_tag = $3 \
+             AND pubkey = $4 AND kind IN (39000, 39001, 39002) \
+             AND deleted_at IS NULL",
+        )
+        .bind(community_id)
+        .bind(channel_id)
+        .bind(channel_id.to_string())
+        .bind(relay_keys.public_key().to_bytes().as_slice())
+        .fetch_one(&pool)
+        .await
+        .expect("count atomic discovery snapshots");
+        assert_eq!(discovery_count, 3);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn operator_channel_create_by_non_owner_leaves_no_channel() {
+        let pool = setup_pool().await;
+        let community_id = make_test_community(&pool).await;
+        let community = CommunityId::from_uuid(community_id);
+        let owner = random_pubkey();
+        let non_owner = random_pubkey();
+        let relay_keys = Keys::generate();
+        let channel_id = Uuid::new_v4();
+        add_test_relay_member(&pool, community_id, &owner, "owner").await;
+        add_test_relay_member(&pool, community_id, &non_owner, "member").await;
+
+        let result = create_operator_channel_with_owner(
+            &pool,
+            community,
+            channel_id,
+            "Household",
+            &non_owner,
+            &relay_keys,
+        )
+        .await
+        .expect("reject non-owner without database error");
+
+        assert!(matches!(
+            result,
+            CreateOperatorChannelWithOwnerResult::OwnerNotCommunityOwner
+        ));
+        assert!(matches!(
+            get_channel(&pool, community, channel_id).await,
+            Err(DbError::ChannelNotFound(id)) if id == channel_id
+        ));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn operator_member_projection_holds_bot_rows_until_signed_snapshot_commit() {
+        let pool = setup_pool().await;
+        let community_id = make_test_community(&pool).await;
+        let community = CommunityId::from_uuid(community_id);
+        let owner = random_pubkey();
+        let agent_a = random_pubkey();
+        let agent_b = random_pubkey();
+        let relay_keys = Keys::generate();
+        let channel_id = Uuid::new_v4();
+        add_test_relay_member(&pool, community_id, &owner, "owner").await;
+        let created = create_operator_channel_with_owner(
+            &pool,
+            community,
+            channel_id,
+            "Household",
+            &owner,
+            &relay_keys,
+        )
+        .await
+        .expect("create operator channel");
+        assert!(matches!(
+            created,
+            CreateOperatorChannelWithOwnerResult::Created(_)
+        ));
+
+        let relay_pubkey = relay_keys.public_key().to_bytes();
+        let result = project_operator_channel_members(
+            &pool,
+            community,
+            channel_id,
+            "Household",
+            &owner,
+            &[agent_a.clone(), agent_b.clone()],
+            &relay_pubkey,
+        )
+        .await
+        .expect("project exact Agent roster");
+        let ProjectOperatorChannelMembersResult::Ready(mut projection) = result else {
+            panic!("pristine founder roster should accept exact Agents");
+        };
+        assert!(projection.changed);
+        assert_eq!(projection.snapshot.members.len(), 3);
+        let latest = projection
+            .snapshot
+            .latest_member_event_timestamp(community, channel_id, &relay_pubkey)
+            .await
+            .expect("read prior roster timestamp")
+            .expect("initial roster event");
+        let mut tags = vec![Tag::parse(["d", &channel_id.to_string()]).expect("d tag")];
+        for member in &projection.snapshot.members {
+            tags.push(
+                Tag::parse(["p", &hex::encode(&member.pubkey), "", &member.role])
+                    .expect("member tag"),
+            );
+        }
+        let event = EventBuilder::new(Kind::Custom(39002), "")
+            .tags(tags)
+            .custom_created_at(nostr::Timestamp::from(latest + 1))
+            .sign_with_keys(&relay_keys)
+            .expect("sign exact roster");
+        let (_, inserted) = projection
+            .snapshot
+            .replace_member_event(community, channel_id, &event)
+            .await
+            .expect("replace roster in held transaction");
+        assert!(inserted);
+        projection
+            .snapshot
+            .release()
+            .await
+            .expect("commit rows and snapshot");
+
+        let members = get_members(&pool, community, channel_id)
+            .await
+            .expect("read committed roster");
+        assert_eq!(members.len(), 3);
+        assert_eq!(
+            members
+                .iter()
+                .filter(|member| member.role == "owner")
+                .count(),
+            1
+        );
+        assert_eq!(
+            members.iter().filter(|member| member.role == "bot").count(),
+            2
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn operator_member_projection_never_converges_a_drifted_roster() {
+        let pool = setup_pool().await;
+        let community_id = make_test_community(&pool).await;
+        let community = CommunityId::from_uuid(community_id);
+        let owner = random_pubkey();
+        let intruder = random_pubkey();
+        let relay_keys = Keys::generate();
+        let channel_id = Uuid::new_v4();
+        add_test_relay_member(&pool, community_id, &owner, "owner").await;
+        create_operator_channel_with_owner(
+            &pool,
+            community,
+            channel_id,
+            "Household",
+            &owner,
+            &relay_keys,
+        )
+        .await
+        .expect("create operator channel");
+        add_member(
+            &pool,
+            community,
+            channel_id,
+            &intruder,
+            MemberRole::Member,
+            Some(&owner),
+        )
+        .await
+        .expect("introduce roster drift");
+
+        let result = project_operator_channel_members(
+            &pool,
+            community,
+            channel_id,
+            "Household",
+            &owner,
+            &[random_pubkey(), random_pubkey()],
+            &relay_keys.public_key().to_bytes(),
+        )
+        .await
+        .expect("read conflict without database error");
+        assert!(matches!(
+            result,
+            ProjectOperatorChannelMembersResult::RosterConflict
+        ));
+        let members = get_members(&pool, community, channel_id)
+            .await
+            .expect("drift remains untouched");
+        assert_eq!(members.len(), 2);
+        assert!(members.iter().any(|member| member.pubkey == intruder));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn operator_channel_uuid_collision_never_converges_or_adds_owner() {
+        let pool = setup_pool().await;
+        let community_id = make_test_community(&pool).await;
+        let community = CommunityId::from_uuid(community_id);
+        let owner = random_pubkey();
+        let existing_creator = random_pubkey();
+        let relay_keys = Keys::generate();
+        let channel_id = Uuid::new_v4();
+        add_test_relay_member(&pool, community_id, &owner, "owner").await;
+        insert_channel_with_id(
+            &pool,
+            community_id,
+            channel_id,
+            "preexisting-channel",
+            &existing_creator,
+        )
+        .await;
+
+        let result = create_operator_channel_with_owner(
+            &pool,
+            community,
+            channel_id,
+            "Household",
+            &owner,
+            &relay_keys,
+        )
+        .await
+        .expect("report UUID collision");
+
+        assert!(matches!(
+            result,
+            CreateOperatorChannelWithOwnerResult::ChannelExists
+        ));
+        let existing = get_channel(&pool, community, channel_id)
+            .await
+            .expect("existing channel remains readable");
+        assert_eq!(existing.name, "preexisting-channel");
+        assert_eq!(existing.visibility, "open");
+        assert_eq!(existing.created_by, existing_creator);
+        assert_eq!(
+            get_member_role(&pool, community, channel_id, &owner)
+                .await
+                .expect("read untouched membership"),
+            None
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Postgres"]
+    async fn operator_channel_create_rechecks_owner_after_transfer_lock_releases() {
+        let pool = setup_pool().await;
+        let community_id = make_test_community(&pool).await;
+        let community = CommunityId::from_uuid(community_id);
+        let prior_owner = random_pubkey();
+        let new_owner = random_pubkey();
+        let relay_keys = Keys::generate();
+        let channel_id = Uuid::new_v4();
+        add_test_relay_member(&pool, community_id, &prior_owner, "owner").await;
+
+        let mut transfer_tx = pool.begin().await.expect("begin ownership transaction");
+        sqlx::query(
+            "SELECT pubkey FROM relay_members \
+             WHERE community_id = $1 AND role = 'owner' \
+             ORDER BY pubkey FOR UPDATE",
+        )
+        .bind(community_id)
+        .fetch_all(&mut *transfer_tx)
+        .await
+        .expect("lock current owner");
+        sqlx::query(
+            "INSERT INTO relay_members (community_id, pubkey, role, added_by) \
+             VALUES ($1, $2, 'owner', NULL)",
+        )
+        .bind(community_id)
+        .bind(hex::encode(&new_owner))
+        .execute(&mut *transfer_tx)
+        .await
+        .expect("install new owner");
+        sqlx::query(
+            "UPDATE relay_members SET role = 'member' \
+             WHERE community_id = $1 AND pubkey = $2",
+        )
+        .bind(community_id)
+        .bind(hex::encode(&prior_owner))
+        .execute(&mut *transfer_tx)
+        .await
+        .expect("demote prior owner");
+
+        let create_pool = pool.clone();
+        let create_owner = prior_owner.clone();
+        let create = tokio::spawn(async move {
+            create_operator_channel_with_owner(
+                &create_pool,
+                community,
+                channel_id,
+                "Household",
+                &create_owner,
+                &relay_keys,
+            )
+            .await
+        });
+        tokio::task::yield_now().await;
+        transfer_tx
+            .commit()
+            .await
+            .expect("commit ownership transfer");
+
+        let result = create
+            .await
+            .expect("join channel create")
+            .expect("operator create result");
+        assert!(matches!(
+            result,
+            CreateOperatorChannelWithOwnerResult::OwnerNotCommunityOwner
+        ));
+        assert!(matches!(
+            get_channel(&pool, community, channel_id).await,
+            Err(DbError::ChannelNotFound(id)) if id == channel_id
+        ));
     }
 
     #[tokio::test]

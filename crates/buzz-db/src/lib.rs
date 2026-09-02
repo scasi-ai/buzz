@@ -1826,6 +1826,52 @@ impl Db {
         .await
     }
 
+    /// Atomically creates one create-only private stream channel while the
+    /// requested initial owner is still a current community owner.
+    #[datastore_span(name = "create_operator_channel_with_owner", system = "postgresql")]
+    pub async fn create_operator_channel_with_owner(
+        &self,
+        community_id: CommunityId,
+        channel_id: Uuid,
+        name: &str,
+        initial_owner: &[u8],
+        relay_keypair: &nostr::Keys,
+    ) -> Result<channel::CreateOperatorChannelWithOwnerResult> {
+        channel::create_operator_channel_with_owner(
+            &self.pool,
+            community_id,
+            channel_id,
+            name,
+            initial_owner,
+            relay_keypair,
+        )
+        .await
+    }
+
+    /// Create only the exact initial PA Agent roster and retain its transaction
+    /// until the relay-authored member snapshot is stored.
+    #[datastore_span(name = "project_operator_channel_members", system = "postgresql")]
+    pub async fn project_operator_channel_members(
+        &self,
+        community_id: CommunityId,
+        channel_id: Uuid,
+        expected_name: &str,
+        owner_pubkey: &[u8],
+        agent_pubkeys: &[Vec<u8>],
+        relay_pubkey: &[u8],
+    ) -> Result<channel::ProjectOperatorChannelMembersResult> {
+        channel::project_operator_channel_members(
+            &self.pool,
+            community_id,
+            channel_id,
+            expected_name,
+            owner_pubkey,
+            agent_pubkeys,
+            relay_pubkey,
+        )
+        .await
+    }
+
     /// Fetches a channel record by ID.
     #[datastore_span(name = "get_channel", system = "postgresql")]
     pub async fn get_channel(
@@ -1939,6 +1985,16 @@ impl Db {
         channel_id: Uuid,
     ) -> Result<Vec<channel::MemberRecord>> {
         channel::get_members(&self.pool, community_id, channel_id).await
+    }
+
+    /// Returns current and removed rows for exact deployment-operator readback.
+    #[datastore_span(name = "get_operator_member_rows", system = "postgresql")]
+    pub async fn get_operator_member_rows(
+        &self,
+        community_id: CommunityId,
+        channel_id: Uuid,
+    ) -> Result<Vec<channel::MemberRecord>> {
+        channel::get_operator_member_rows(&self.pool, community_id, channel_id).await
     }
 
     /// Returns active members for multiple channels in a single query.

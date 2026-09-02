@@ -100,6 +100,16 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/operator/communities/transfer",
             post(api::operator::transfer_community),
         )
+        .route(
+            "/operator/channels",
+            get(api::operator_channels::observe_operator_channel)
+                .post(api::operator_channels::create_operator_channel),
+        )
+        .route(
+            "/operator/channel-memberships",
+            get(api::operator_channels::observe_operator_channel_members)
+                .post(api::operator_channels::project_operator_channel_members),
+        )
         // Relay invites: mint (owner/admin) + claim (membership-gate exempt)
         .route("/api/invites", post(api::invites::mint_invite))
         .route("/api/join-policy", get(api::invites::join_policy))
@@ -331,8 +341,40 @@ async fn nip11_or_ws_handler(
             if state.shutting_down.load(Ordering::Relaxed) {
                 return (StatusCode::SERVICE_UNAVAILABLE, "relay restarting").into_response();
             }
+            let now = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+                Ok(value) => value.as_secs(),
+                Err(_) => {
+                    return (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "relay: gateway authorization unavailable",
+                    )
+                        .into_response();
+                }
+            };
+            let micasa_public_relay_url = match crate::micasa_gateway::authorize_gateway_headers(
+                state.config.micasa_gateway.as_ref(),
+                &headers,
+                tenant.host(),
+                now,
+            ) {
+                Ok(value) => value,
+                Err(_) => {
+                    metrics::counter!(
+                        "buzz_auth_failures_total",
+                        "reason" => "micasa_gateway_invalid"
+                    )
+                    .increment(1);
+                    return (
+                        StatusCode::FORBIDDEN,
+                        "relay: gateway authorization refused",
+                    )
+                        .into_response();
+                }
+            };
             limit_relay_websocket(ws, max_frame_bytes)
-                .on_upgrade(move |socket| handle_connection(socket, state, addr, tenant))
+                .on_upgrade(move |socket| {
+                    handle_connection(socket, state, addr, tenant, micasa_public_relay_url)
+                })
                 .into_response()
         }
         Err(_) => {

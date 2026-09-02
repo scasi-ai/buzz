@@ -1,11 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { InvitePage } from "@/features/invite/ui/InvitePage";
+import { HouseholdInvitePage } from "@/features/micasa/ui/HouseholdInvitePage";
 
 export const Route = createFileRoute("/invite/$code")({
-  component: InvitePageRoute,
+  component: HouseholdInvitePageRoute,
 });
 
-function InvitePageRoute() {
+function HouseholdInvitePageRoute() {
   const { code } = Route.useParams();
-  return <InvitePage code={code} />;
+  return <HouseholdInvitePage code={code} />;
 }
